@@ -22,7 +22,9 @@ type Manifest = {
 // them to Releases for distribution.
 function makePackUrl(tag: string, path: string) {
   const base = import.meta.env.BASE_URL
-  return `${base}packs/${tag}/${path}`
+  // cache-bust because GitHub Pages caches aggressively for a few minutes
+  const v = encodeURIComponent(String(Date.now()))
+  return `${base}packs/${tag}/${path}?v=${v}`
 }
 
 async function loadManifest(tag: string): Promise<Manifest> {
@@ -207,7 +209,8 @@ function main() {
       }
     } catch (e) {
       console.error(e)
-      dataStatusEl.textContent = `Data pack load failed (still using preview geometry).`
+      const msg = e instanceof Error ? e.message : String(e)
+      dataStatusEl.textContent = `Data pack load failed: ${msg}`
     }
   }
 
