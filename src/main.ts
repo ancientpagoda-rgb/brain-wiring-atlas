@@ -51,8 +51,9 @@ async function loadGltf(url: string): Promise<THREE.Object3D> {
   })
 }
 
-function normalizeObjectToUnit(obj: THREE.Object3D) {
-  // Centers object at origin and scales so its longest dimension is ~1.
+type Normalization = { center: THREE.Vector3; scale: number }
+
+function computeNormalization(obj: THREE.Object3D): Normalization {
   const box = new THREE.Box3().setFromObject(obj)
   const size = new THREE.Vector3()
   box.getSize(size)
@@ -60,17 +61,16 @@ function normalizeObjectToUnit(obj: THREE.Object3D) {
   box.getCenter(center)
   const maxDim = Math.max(size.x, size.y, size.z)
   const scale = maxDim > 0 ? 1 / maxDim : 1
+  return { center, scale }
+}
 
+function applyNormalization(obj: THREE.Object3D, norm: Normalization) {
   obj.traverse((child) => {
     ;(child as any).frustumCulled = false
   })
-
-  obj.position.sub(center)
-  obj.scale.multiplyScalar(scale)
+  obj.position.sub(norm.center)
+  obj.scale.multiplyScalar(norm.scale)
   obj.updateMatrixWorld(true)
-
-  // Return the transform we applied so other geometry can be brought into the same normalized space.
-  return { center, scale }
 }
 
 function parseHexColor(hex: string, fallback = 0x8bd3ff) {
@@ -225,7 +225,7 @@ function main() {
     try {
       const manifest = await loadManifest(tag)
 
-      let anatomyNorm: { center: THREE.Vector3; scale: number } | null = null
+      let anatomyNorm: Normalization | null = null
 
       // Try loading anatomy if provided.
       if (manifest.assets.anatomy?.url) {
@@ -240,12 +240,8 @@ function main() {
         if (old) brainGroup.remove(old)
         brainGroup.add(obj)
 
-        anatomyNorm = normalizeObjectToUnit(obj)
-
-        // Reframe camera/controls roughly around the loaded anatomy.
-        controls.target.set(0, 0, 0)
-        camera.position.set(1.2, 0.6, 1.6)
-        controls.update()
+        anatomyNorm = computeNormalization(obj)
+        applyNormalization(obj, anatomyNorm)
       }
 
       // Load bundles.
@@ -264,9 +260,7 @@ function main() {
 
           // Bring bundle into same normalized space as anatomy (if anatomy loaded).
           if (anatomyNorm) {
-            obj.position.sub(anatomyNorm.center)
-            obj.scale.multiplyScalar(anatomyNorm.scale)
-            obj.updateMatrixWorld(true)
+            applyNormalization(obj, anatomyNorm)
           }
 
           // Colorize meshes.
@@ -343,6 +337,25 @@ function main() {
       const bundleCount = bundleObjects.size
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
       dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • bundles: <b>${bundleCount}</b>`
+
+      // Frame camera to combined bounds.
+      {
+        const box = new THREE.Box3().setFromObject(brainGroup)
+        const size = new THREE.Vector3()
+        box.getSize(size)
+        const center = new THREE.Vector3()
+        box.getCenter(center)
+
+        const maxDim = Math.max(size.x, size.y, size.z)
+        const dist = maxDim * 2.2
+
+        controls.target.copy(center)
+        camera.position.copy(center.clone().add(new THREE.Vector3(dist, dist * 0.35, dist)))
+        camera.near = Math.max(0.001, dist / 200)
+        camera.far = Math.max(10, dist * 50)
+        camera.updateProjectionMatrix()
+        controls.update()
+      }
 
       if (!manifest.assets.anatomy?.url) {
         dataStatusEl.textContent = manifest.notes ?? 'Loaded (no anatomy in this pack).'
