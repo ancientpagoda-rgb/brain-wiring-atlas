@@ -168,6 +168,7 @@ function main() {
 
   const geo = new THREE.SphereGeometry(0.45, 96, 96)
   const brain = new THREE.Mesh(geo, mat)
+  brain.name = 'placeholderBrain'
   brainGroup.add(brain)
 
   // Cutaway: hide one hemisphere by scaling X (temporary hack; real cutaway will come from mesh).
@@ -177,6 +178,7 @@ function main() {
     new THREE.WireframeGeometry(geo),
     new THREE.LineBasicMaterial({ color: 0x2a4666, transparent: true, opacity: 0.12 })
   )
+  wire.name = 'placeholderWire'
   wire.scale.copy(brain.scale)
   brainGroup.add(wire)
 
@@ -226,6 +228,7 @@ function main() {
       const manifest = await loadManifest(tag)
 
       let anatomyNorm: Normalization | null = null
+      let anatomyObj: THREE.Object3D | null = null
 
       // Try loading anatomy if provided.
       if (manifest.assets.anatomy?.url) {
@@ -236,12 +239,19 @@ function main() {
         const obj = await loadGltf(url)
         obj.name = 'anatomy'
 
+        // Hide placeholder geometry once real anatomy is loaded.
+        const placeholderBrain = brainGroup.getObjectByName('placeholderBrain')
+        const placeholderWire = brainGroup.getObjectByName('placeholderWire')
+        if (placeholderBrain) placeholderBrain.visible = false
+        if (placeholderWire) placeholderWire.visible = false
+
         const old = brainGroup.getObjectByName('anatomy')
         if (old) brainGroup.remove(old)
         brainGroup.add(obj)
 
         anatomyNorm = computeNormalization(obj)
         applyNormalization(obj, anatomyNorm)
+        anatomyObj = obj
       }
 
       // Load bundles.
@@ -338,19 +348,22 @@ function main() {
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
       dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • bundles: <b>${bundleCount}</b>`
 
-      // Frame camera to combined bounds.
+      // Frame camera to bounds of (anatomy + bundles), excluding debug helpers and placeholders.
       {
-        const box = new THREE.Box3().setFromObject(brainGroup)
+        const box = new THREE.Box3()
+        if (anatomyObj) box.expandByObject(anatomyObj)
+        box.expandByObject(bundlesGroup)
+
         const size = new THREE.Vector3()
         box.getSize(size)
         const center = new THREE.Vector3()
         box.getCenter(center)
 
         const maxDim = Math.max(size.x, size.y, size.z)
-        const dist = maxDim * 2.2
+        const dist = maxDim > 0 ? maxDim * 2.4 : 2.4
 
         controls.target.copy(center)
-        camera.position.copy(center.clone().add(new THREE.Vector3(dist, dist * 0.35, dist)))
+        camera.position.copy(center.clone().add(new THREE.Vector3(dist, dist * 0.25, dist * 0.9)))
         camera.near = Math.max(0.001, dist / 200)
         camera.far = Math.max(10, dist * 50)
         camera.updateProjectionMatrix()
