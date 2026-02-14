@@ -16,8 +16,17 @@ type Manifest = {
   notes?: string
   assets: {
     anatomy?: { url: string; name?: string }
-    bundles?: Array<{ id: string; name: string; url: string; color?: string; type?: 'polyline' | 'mesh' }>
-    wires?: Array<{ id: string; name: string; url: string; color?: string; type?: 'polyline' }>
+    bundles?: Array<{
+      id: string
+      name: string
+      color?: string
+      // v0.6+: dual representations
+      meshUrl?: string
+      wireUrl?: string
+      // legacy
+      url?: string
+      type?: 'polyline' | 'mesh'
+    }>
   }
 }
 
@@ -257,170 +266,139 @@ function main() {
         anatomyObj = obj
       }
 
-      // Load structural layers.
+      // Load structural layers (Surface meshes and/or Wiring centerlines).
       bundlesGroup.clear()
       bundleObjects.clear()
 
       const wantSurface = params.structuralMode === 'Surface' || params.structuralMode === 'Both'
       const wantWiring = params.structuralMode === 'Wiring' || params.structuralMode === 'Both'
 
-      if (wantSurface) {
-        for (const b of manifest.assets.bundles ?? []) {
-          const bUrl = b.url.startsWith('http') ? b.url : makePackUrl(tag, b.url)
-          const color = parseHexColor(b.color ?? '#8bd3ff')
+      const bundleDefs = manifest.assets.bundles ?? []
 
-        if ((b.type ?? 'polyline') === 'mesh') {
-          const url = b.url.startsWith('http') ? b.url : makePackUrlNoBust(tag, b.url)
-          const obj = await loadGltf(url)
-          obj.name = `bundle:${b.id}`
-          ;(obj as any).userData = { label: b.name }
-
-          // Bring bundle into same normalized space as anatomy (if anatomy loaded).
-          if (anatomyNorm) {
-            applyNormalization(obj, anatomyNorm)
-          }
-
-          // Colorize meshes.
-          obj.traverse((child) => {
-            const mesh = child as THREE.Mesh
-            if (!mesh.isMesh) return
-            mesh.material = new THREE.MeshStandardMaterial({
-              color,
-              transparent: true,
-              opacity: Math.min(0.9, Math.max(0.1, params.bundleOpacity)),
-              roughness: 0.9,
-              metalness: 0,
-              emissive: params.glowMode ? new THREE.Color(color) : new THREE.Color(0x000000),
-              emissiveIntensity: params.glowMode ? 0.35 : 0,
-            })
-          })
-
-          bundlesGroup.add(obj)
-          bundleObjects.set(b.id, obj)
-          continue
-        }
-
-        // Polyline bundles.
-        const data = await loadBundleJson(bUrl)
-
-        const group = new THREE.Group()
-        group.name = `bundle:${data.id}`
-        ;(group as any).userData = { label: data.name }
-
-        // Bundles authored in normalized space.
-        const makeLineObject = (pts: THREE.Vector3[]) => {
-          if (params.bundleWidth <= 1.0) {
-            const material = new THREE.LineBasicMaterial({
-              color,
-              transparent: true,
-              opacity: params.bundleOpacity,
-              blending: params.glowMode ? THREE.AdditiveBlending : THREE.NormalBlending,
-            })
-            const geom = new THREE.BufferGeometry().setFromPoints(pts)
-            return new THREE.Line(geom, material)
-          }
-
-          const positions: number[] = []
-          for (const p of pts) positions.push(p.x, p.y, p.z)
-          const geom = new LineGeometry()
-          geom.setPositions(positions)
-
-          const mat = new LineMaterial({
-            color,
-            linewidth: params.bundleWidth,
-            transparent: true,
-            opacity: params.bundleOpacity,
-            dashed: false,
-          })
-          mat.blending = params.glowMode ? THREE.AdditiveBlending : THREE.NormalBlending
-          mat.depthTest = true
-
-          const line2 = new Line2(geom, mat)
-          line2.computeLineDistances()
-          return line2
-        }
-
-        for (const line of data.lines) {
-          const pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
-          const obj = makeLineObject(pts)
-          ;(obj as any).userData = { label: data.name }
-          group.add(obj)
-        }
-
-        bundlesGroup.add(group)
-        bundleObjects.set(data.id, group)
-        }
+      // Initialize enabled map once per tag.
+      if (params.enabledBundleIds.size === 0) {
+        for (const b of bundleDefs) params.enabledBundleIds.add(b.id)
       }
 
-      if (wantWiring) {
-        for (const b of manifest.assets.wires ?? []) {
-          const wUrl = b.url.startsWith('http') ? b.url : makePackUrl(tag, b.url)
-          const data = await loadBundleJson(wUrl)
-          const color = parseHexColor(b.color ?? '#8bd3ff')
+      const makeWireObject = (pts: THREE.Vector3[], color: number) => {
+        if (params.bundleWidth <= 1.0) {
+          const material = new THREE.LineBasicMaterial({
+            color,
+            transparent: true,
+            opacity: params.bundleOpacity,
+            blending: THREE.AdditiveBlending,
+          })
+          const geom = new THREE.BufferGeometry().setFromPoints(pts)
+          return new THREE.Line(geom, material)
+        }
 
-          const group = new THREE.Group()
-          group.name = `wire:${data.id}`
-          ;(group as any).userData = { label: b.name }
+        const positions: number[] = []
+        for (const p of pts) positions.push(p.x, p.y, p.z)
+        const geom = new LineGeometry()
+        geom.setPositions(positions)
 
-          const makeLineObject = (pts: THREE.Vector3[]) => {
-            if (params.bundleWidth <= 1.0) {
-              const material = new THREE.LineBasicMaterial({
+        const mat = new LineMaterial({
+          color,
+          linewidth: Math.max(1.0, params.bundleWidth),
+          transparent: true,
+          opacity: params.bundleOpacity,
+          dashed: false,
+        })
+        mat.blending = THREE.AdditiveBlending
+        mat.depthTest = true
+
+        const line2 = new Line2(geom, mat)
+        line2.computeLineDistances()
+        return line2
+      }
+
+      for (const b of bundleDefs) {
+        if (!params.enabledBundleIds.has(b.id)) continue
+
+        const color = parseHexColor(b.color ?? '#8bd3ff')
+        const group = new THREE.Group()
+        group.name = `bundle:${b.id}`
+        ;(group as any).userData = { label: b.name }
+
+        // Surface (mesh)
+        if (wantSurface) {
+          const meshPath = b.meshUrl ?? (b.type === 'mesh' ? b.url : undefined)
+          if (meshPath) {
+            const url = meshPath.startsWith('http') ? meshPath : makePackUrlNoBust(tag, meshPath)
+            const obj = await loadGltf(url)
+            obj.name = `surface:${b.id}`
+            ;(obj as any).userData = { label: b.name }
+
+            if (anatomyNorm) applyNormalization(obj, anatomyNorm)
+
+            obj.traverse((child) => {
+              const mesh = child as THREE.Mesh
+              if (!mesh.isMesh) return
+              mesh.material = new THREE.MeshStandardMaterial({
                 color,
                 transparent: true,
-                opacity: params.bundleOpacity,
-                blending: THREE.AdditiveBlending,
+                opacity: Math.min(0.9, Math.max(0.1, params.bundleOpacity)),
+                roughness: 0.9,
+                metalness: 0,
+                emissive: params.glowMode ? new THREE.Color(color) : new THREE.Color(0x000000),
+                emissiveIntensity: params.glowMode ? 0.35 : 0,
               })
-              const geom = new THREE.BufferGeometry().setFromPoints(pts)
-              return new THREE.Line(geom, material)
-            }
-
-            const positions: number[] = []
-            for (const p of pts) positions.push(p.x, p.y, p.z)
-            const geom = new LineGeometry()
-            geom.setPositions(positions)
-
-            const mat = new LineMaterial({
-              color,
-              linewidth: Math.max(1.0, params.bundleWidth),
-              transparent: true,
-              opacity: params.bundleOpacity,
-              dashed: false,
             })
-            mat.blending = THREE.AdditiveBlending
-            mat.depthTest = true
 
-            const line2 = new Line2(geom, mat)
-            line2.computeLineDistances()
-            return line2
-          }
-
-          for (const line of data.lines) {
-            // line is in world mm; bring into normalized anatomy space.
-            let pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
-            if (anatomyNorm) {
-              pts = pts.map((p) => p.sub(anatomyNorm!.center).multiplyScalar(anatomyNorm!.scale))
-            }
-            const obj = makeLineObject(pts)
-            ;(obj as any).userData = { label: b.name }
             group.add(obj)
           }
+        }
 
+        // Wiring (polyline)
+        if (wantWiring) {
+          const wirePath = b.wireUrl
+          if (wirePath) {
+            const url = wirePath.startsWith('http') ? wirePath : makePackUrl(tag, wirePath)
+            const data = await loadBundleJson(url)
+
+            for (const line of data.lines) {
+              let pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
+              if (anatomyNorm) pts = pts.map((p) => p.sub(anatomyNorm!.center).multiplyScalar(anatomyNorm!.scale))
+              const obj = makeWireObject(pts, color)
+              ;(obj as any).userData = { label: b.name }
+              group.add(obj)
+            }
+          }
+        }
+
+        if (group.children.length > 0) {
           bundlesGroup.add(group)
-          bundleObjects.set(`${b.id}-wire`, group)
+          bundleObjects.set(b.id, group)
         }
       }
 
       const bundleCount = bundleObjects.size
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
-      dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • bundles: <b>${bundleCount}</b>`
+      dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • visible bundles: <b>${bundleCount}</b> • mode: <b>${params.structuralMode}</b>`
 
-      // Render legend from whichever list is active.
-      const legendList = wantWiring ? (manifest.assets.wires ?? []) : (manifest.assets.bundles ?? [])
-      const items = legendList.map((b) => {
+      // Legend + per-bundle toggles.
+      const items = bundleDefs.map((b) => {
+        const checked = params.enabledBundleIds.has(b.id) ? 'checked' : ''
         const swatch = `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${b.color ?? '#8bd3ff'};margin-right:8px;border:1px solid rgba(255,255,255,0.15)"></span>`
-        return `<div style="display:flex;align-items:center;gap:6px;">${swatch}<span style="opacity:0.92">${b.name}</span></div>`
+        return `
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
+            <input type="checkbox" data-bundle-id="${b.id}" ${checked} />
+            ${swatch}
+            <span style="opacity:0.92">${b.name}</span>
+          </label>
+        `
       })
       bundleLegendEl.innerHTML = items.join('')
+
+      bundleLegendEl.onclick = (ev) => {
+        const t = ev.target as HTMLElement
+        if (!(t instanceof HTMLInputElement)) return
+        const id = t.dataset.bundleId
+        if (!id) return
+        if (t.checked) params.enabledBundleIds.add(id)
+        else params.enabledBundleIds.delete(id)
+        params.applyDataTag()
+      }
 
       // Frame camera to bounds of (anatomy + bundles), excluding debug helpers and placeholders.
       {
@@ -466,7 +444,8 @@ function main() {
     bundleOpacity: 0.75,
     bundleWidth: 2.5,
     glowMode: true,
-    structuralMode: 'Surface' as 'Surface' | 'Wiring' | 'Both',
+    structuralMode: 'Wiring' as 'Surface' | 'Wiring' | 'Both',
+    enabledBundleIds: new Set<string>(),
     figureMode: false,
     exportPng: () => {
       renderer.render(scene, camera)
