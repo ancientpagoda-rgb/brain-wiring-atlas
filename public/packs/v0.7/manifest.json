@@ -1,0 +1,23 @@
+{
+  "version": "v0.7",
+  "notes": "Fixes alignment by using Pandora's left-hemisphere surface reconstruction as anatomy, and wiring centerlines derived from Pandora TractSeg volumes.",
+  "citation": "MASILab/Pandora-WhiteMatterAtlas (CC-BY-4.0). Preprint: https://www.biorxiv.org/content/10.1101/2020.06.12.148999v1.full",
+  "assets": {
+    "anatomy": {
+      "name": "Pandora TractSeg LH surface (template)",
+      "url": "anatomy.glb"
+    },
+    "bundles": [
+      { "id": "afl", "name": "Arcuate fascicle (L)", "meshUrl": "bundles/AF_left.glb", "wireUrl": "wires/AF_left_wire.json", "color": "#8bd3ff" },
+      { "id": "atr", "name": "Anterior thalamic radiation (L)", "meshUrl": "bundles/ATR_left.glb", "wireUrl": "wires/ATR_left_wire.json", "color": "#9ad8ff" },
+      { "id": "cgl", "name": "Cingulum (L)", "meshUrl": "bundles/CG_left.glb", "wireUrl": "wires/CG_left_wire.json", "color": "#ffd58b" },
+      { "id": "cstl", "name": "Corticospinal tract (L)", "meshUrl": "bundles/CST_left.glb", "wireUrl": "wires/CST_left_wire.json", "color": "#7fffd4" },
+      { "id": "ifo", "name": "Inferior occipito-frontal fascicle (L)", "meshUrl": "bundles/IFO_left.glb", "wireUrl": "wires/IFO_left_wire.json", "color": "#c4b5ff" },
+      { "id": "ilf", "name": "Inferior longitudinal fascicle (L)", "meshUrl": "bundles/ILF_left.glb", "wireUrl": "wires/ILF_left_wire.json", "color": "#ff9ad1" },
+      { "id": "or", "name": "Optic radiation (L)", "meshUrl": "bundles/OR_left.glb", "wireUrl": "wires/OR_left_wire.json", "color": "#ffea7a" },
+      { "id": "slf2", "name": "Superior longitudinal fascicle II (L)", "meshUrl": "bundles/SLF_II_left.glb", "wireUrl": "wires/SLF_II_left_wire.json", "color": "#9effa1" },
+      { "id": "slf3", "name": "Superior longitudinal fascicle III (L)", "meshUrl": "bundles/SLF_III_left.glb", "wireUrl": "wires/SLF_III_left_wire.json", "color": "#63ffa6" },
+      { "id": "uf", "name": "Uncinate fascicle (L)", "meshUrl": "bundles/UF_left.glb", "wireUrl": "wires/UF_left_wire.json", "color": "#ffb86b" }
+    ]
+  }
+}

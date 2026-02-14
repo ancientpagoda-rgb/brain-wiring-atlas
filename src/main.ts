@@ -2,13 +2,14 @@ import './style.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { Line2 } from 'three/examples/jsm/lines/Line2.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import GUI from 'lil-gui'
 
 // Data pack tag hosted under /public/packs/<tag>/...
-let DATA_TAG = 'v0.6'
+let DATA_TAG = 'v0.7'
 
 type Manifest = {
   version: string
@@ -56,6 +57,7 @@ async function loadManifest(tag: string): Promise<Manifest> {
 
 async function loadGltf(url: string): Promise<THREE.Object3D> {
   const loader = new GLTFLoader()
+  loader.setMeshoptDecoder(MeshoptDecoder)
   return new Promise((resolve, reject) => {
     loader.load(url, (gltf) => resolve(gltf.scene), undefined, (err) => reject(err))
   })
