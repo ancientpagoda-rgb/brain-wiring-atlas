@@ -1,0 +1,16 @@
+{
+  "version": "v0.4",
+  "notes": "First clean (CC-BY-4.0) atlas-derived structural bundles as meshes, extracted from Pandora-WhiteMatterAtlas TractSeg 4D probabilistic atlas (thresholded isosurface).",
+  "citation": "Bundles derived from MASILab/Pandora-WhiteMatterAtlas (CC-BY-4.0). Preprint: https://www.biorxiv.org/content/10.1101/2020.06.12.148999v1.full",
+  "assets": {
+    "anatomy": {
+      "name": "fsaverage5 pial left (cutaway)",
+      "url": "anatomy.glb"
+    },
+    "bundles": [
+      { "id": "afl", "name": "Arcuate fascicle (L)", "type": "mesh", "url": "bundles/AF_left.glb", "color": "#8bd3ff" },
+      { "id": "cgl", "name": "Cingulum (L)", "type": "mesh", "url": "bundles/CG_left.glb", "color": "#ffd58b" },
+      { "id": "cstl", "name": "Corticospinal tract (L)", "type": "mesh", "url": "bundles/CST_left.glb", "color": "#7fffd4" }
+    ]
+  }
+}

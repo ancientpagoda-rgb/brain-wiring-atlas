@@ -8,7 +8,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import GUI from 'lil-gui'
 
 // Data pack tag hosted under /public/packs/<tag>/...
-let DATA_TAG = 'v0.3'
+let DATA_TAG = 'v0.4'
 
 type Manifest = {
   version: string
@@ -16,7 +16,7 @@ type Manifest = {
   notes?: string
   assets: {
     anatomy?: { url: string; name?: string }
-    bundles?: Array<{ id: string; name: string; url: string; color?: string }>
+    bundles?: Array<{ id: string; name: string; url: string; color?: string; type?: 'polyline' | 'mesh' }>
   }
 }
 
@@ -62,14 +62,15 @@ function normalizeObjectToUnit(obj: THREE.Object3D) {
   const scale = maxDim > 0 ? 1 / maxDim : 1
 
   obj.traverse((child) => {
-    // ensure bounding boxes update after scaling
     ;(child as any).frustumCulled = false
   })
 
   obj.position.sub(center)
   obj.scale.multiplyScalar(scale)
   obj.updateMatrixWorld(true)
-  return { box, size, center, scale }
+
+  // Return the transform we applied so other geometry can be brought into the same normalized space.
+  return { center, scale }
 }
 
 function parseHexColor(hex: string, fallback = 0x8bd3ff) {
@@ -224,6 +225,8 @@ function main() {
     try {
       const manifest = await loadManifest(tag)
 
+      let anatomyNorm: { center: THREE.Vector3; scale: number } | null = null
+
       // Try loading anatomy if provided.
       if (manifest.assets.anatomy?.url) {
         const url = manifest.assets.anatomy.url.startsWith('http')
@@ -237,14 +240,12 @@ function main() {
         if (old) brainGroup.remove(old)
         brainGroup.add(obj)
 
-        normalizeObjectToUnit(obj)
+        anatomyNorm = normalizeObjectToUnit(obj)
 
         // Reframe camera/controls roughly around the loaded anatomy.
         controls.target.set(0, 0, 0)
         camera.position.set(1.2, 0.6, 1.6)
         controls.update()
-
-        // Don't finalize status here; we update after bundles load.
       }
 
       // Load bundles.
@@ -253,17 +254,49 @@ function main() {
 
       for (const b of manifest.assets.bundles ?? []) {
         const bUrl = b.url.startsWith('http') ? b.url : makePackUrl(tag, b.url)
-        const data = await loadBundleJson(bUrl)
         const color = parseHexColor(b.color ?? '#8bd3ff')
+
+        if ((b.type ?? 'polyline') === 'mesh') {
+          const url = b.url.startsWith('http') ? b.url : makePackUrlNoBust(tag, b.url)
+          const obj = await loadGltf(url)
+          obj.name = `bundle:${b.id}`
+          ;(obj as any).userData = { label: b.name }
+
+          // Bring bundle into same normalized space as anatomy (if anatomy loaded).
+          if (anatomyNorm) {
+            obj.position.sub(anatomyNorm.center)
+            obj.scale.multiplyScalar(anatomyNorm.scale)
+            obj.updateMatrixWorld(true)
+          }
+
+          // Colorize meshes.
+          obj.traverse((child) => {
+            const mesh = child as THREE.Mesh
+            if (!mesh.isMesh) return
+            mesh.material = new THREE.MeshStandardMaterial({
+              color,
+              transparent: true,
+              opacity: Math.min(0.9, Math.max(0.1, params.bundleOpacity)),
+              roughness: 0.9,
+              metalness: 0,
+              emissive: params.glowMode ? new THREE.Color(color) : new THREE.Color(0x000000),
+              emissiveIntensity: params.glowMode ? 0.35 : 0,
+            })
+          })
+
+          bundlesGroup.add(obj)
+          bundleObjects.set(b.id, obj)
+          continue
+        }
+
+        // Polyline bundles.
+        const data = await loadBundleJson(bUrl)
 
         const group = new THREE.Group()
         group.name = `bundle:${data.id}`
         ;(group as any).userData = { label: data.name }
 
-        // Bundles in the pack are authored in "normalized" space (roughly -0.5..0.5).
-        // If/when we switch to real tractography in mm space, we can set a flag in the manifest.
-        const bundleScale = 1.0
-
+        // Bundles authored in normalized space.
         const makeLineObject = (pts: THREE.Vector3[]) => {
           if (params.bundleWidth <= 1.0) {
             const material = new THREE.LineBasicMaterial({
@@ -276,7 +309,6 @@ function main() {
             return new THREE.Line(geom, material)
           }
 
-          // Wide lines (screen-space) using Line2.
           const positions: number[] = []
           for (const p of pts) positions.push(p.x, p.y, p.z)
           const geom = new LineGeometry()
@@ -284,7 +316,7 @@ function main() {
 
           const mat = new LineMaterial({
             color,
-            linewidth: params.bundleWidth, // in pixels
+            linewidth: params.bundleWidth,
             transparent: true,
             opacity: params.bundleOpacity,
             dashed: false,
@@ -298,7 +330,7 @@ function main() {
         }
 
         for (const line of data.lines) {
-          const pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]).multiplyScalar(bundleScale))
+          const pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
           const obj = makeLineObject(pts)
           ;(obj as any).userData = { label: data.name }
           group.add(obj)
