@@ -129,6 +129,17 @@ function main() {
 
   // Lighting (moody)
   scene.add(new THREE.AmbientLight(0x112233, 0.25))
+
+  // Debug helpers (small, but useful)
+  const axes = new THREE.AxesHelper(0.3)
+  ;(axes.material as THREE.Material).transparent = true
+  ;(axes.material as THREE.Material).opacity = 0.25
+  scene.add(axes)
+  const originDot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.01, 12, 12),
+    new THREE.MeshBasicMaterial({ color: 0xff66aa })
+  )
+  scene.add(originDot)
   const key = new THREE.DirectionalLight(0xffffff, 1.3)
   key.position.set(1.2, 1.0, 1.0)
   scene.add(key)
@@ -230,7 +241,7 @@ function main() {
         camera.position.set(1.2, 0.6, 1.6)
         controls.update()
 
-        dataStatusEl.innerHTML = `Loaded: <b>${manifest.assets.anatomy.name ?? 'anatomy'}</b>`
+        // Don't finalize status here; we update after bundles load.
       }
 
       // Load bundles.
@@ -263,6 +274,10 @@ function main() {
         bundlesGroup.add(group)
         bundleObjects.set(data.id, group)
       }
+
+      const bundleCount = bundleObjects.size
+      const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
+      dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • bundles: <b>${bundleCount}</b>`
 
       if (!manifest.assets.anatomy?.url) {
         dataStatusEl.textContent = manifest.notes ?? 'Loaded (no anatomy in this pack).'
