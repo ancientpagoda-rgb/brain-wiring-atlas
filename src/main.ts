@@ -144,6 +144,8 @@ function main() {
   controls.enableDamping = true
   controls.dampingFactor = 0.06
   controls.target.set(0.0, 0.05, 0.0)
+  controls.minDistance = 0.05
+  controls.maxDistance = 50
 
   // Lighting (moody)
   scene.add(new THREE.AmbientLight(0x112233, 0.25))
@@ -437,6 +439,10 @@ function main() {
   const params = {
     dataTag: DATA_TAG,
     applyDataTag: async () => {
+      // reset enabled ids when switching packs
+      if (params.dataTag !== DATA_TAG) {
+        params.enabledBundleIds.clear()
+      }
       DATA_TAG = params.dataTag
       await applyDataPack(DATA_TAG)
     },
