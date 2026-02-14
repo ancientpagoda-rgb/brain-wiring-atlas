@@ -8,7 +8,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import GUI from 'lil-gui'
 
 // Data pack tag hosted under /public/packs/<tag>/...
-let DATA_TAG = 'v0.5'
+let DATA_TAG = 'v0.6'
 
 type Manifest = {
   version: string
@@ -17,6 +17,7 @@ type Manifest = {
   assets: {
     anatomy?: { url: string; name?: string }
     bundles?: Array<{ id: string; name: string; url: string; color?: string; type?: 'polyline' | 'mesh' }>
+    wires?: Array<{ id: string; name: string; url: string; color?: string; type?: 'polyline' }>
   }
 }
 
@@ -256,13 +257,17 @@ function main() {
         anatomyObj = obj
       }
 
-      // Load bundles.
+      // Load structural layers.
       bundlesGroup.clear()
       bundleObjects.clear()
 
-      for (const b of manifest.assets.bundles ?? []) {
-        const bUrl = b.url.startsWith('http') ? b.url : makePackUrl(tag, b.url)
-        const color = parseHexColor(b.color ?? '#8bd3ff')
+      const wantSurface = params.structuralMode === 'Surface' || params.structuralMode === 'Both'
+      const wantWiring = params.structuralMode === 'Wiring' || params.structuralMode === 'Both'
+
+      if (wantSurface) {
+        for (const b of manifest.assets.bundles ?? []) {
+          const bUrl = b.url.startsWith('http') ? b.url : makePackUrl(tag, b.url)
+          const color = parseHexColor(b.color ?? '#8bd3ff')
 
         if ((b.type ?? 'polyline') === 'mesh') {
           const url = b.url.startsWith('http') ? b.url : makePackUrlNoBust(tag, b.url)
@@ -344,14 +349,74 @@ function main() {
 
         bundlesGroup.add(group)
         bundleObjects.set(data.id, group)
+        }
+      }
+
+      if (wantWiring) {
+        for (const b of manifest.assets.wires ?? []) {
+          const wUrl = b.url.startsWith('http') ? b.url : makePackUrl(tag, b.url)
+          const data = await loadBundleJson(wUrl)
+          const color = parseHexColor(b.color ?? '#8bd3ff')
+
+          const group = new THREE.Group()
+          group.name = `wire:${data.id}`
+          ;(group as any).userData = { label: b.name }
+
+          const makeLineObject = (pts: THREE.Vector3[]) => {
+            if (params.bundleWidth <= 1.0) {
+              const material = new THREE.LineBasicMaterial({
+                color,
+                transparent: true,
+                opacity: params.bundleOpacity,
+                blending: THREE.AdditiveBlending,
+              })
+              const geom = new THREE.BufferGeometry().setFromPoints(pts)
+              return new THREE.Line(geom, material)
+            }
+
+            const positions: number[] = []
+            for (const p of pts) positions.push(p.x, p.y, p.z)
+            const geom = new LineGeometry()
+            geom.setPositions(positions)
+
+            const mat = new LineMaterial({
+              color,
+              linewidth: Math.max(1.0, params.bundleWidth),
+              transparent: true,
+              opacity: params.bundleOpacity,
+              dashed: false,
+            })
+            mat.blending = THREE.AdditiveBlending
+            mat.depthTest = true
+
+            const line2 = new Line2(geom, mat)
+            line2.computeLineDistances()
+            return line2
+          }
+
+          for (const line of data.lines) {
+            // line is in world mm; bring into normalized anatomy space.
+            let pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
+            if (anatomyNorm) {
+              pts = pts.map((p) => p.sub(anatomyNorm!.center).multiplyScalar(anatomyNorm!.scale))
+            }
+            const obj = makeLineObject(pts)
+            ;(obj as any).userData = { label: b.name }
+            group.add(obj)
+          }
+
+          bundlesGroup.add(group)
+          bundleObjects.set(`${b.id}-wire`, group)
+        }
       }
 
       const bundleCount = bundleObjects.size
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
       dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • bundles: <b>${bundleCount}</b>`
 
-      // Render legend from manifest bundle list.
-      const items = (manifest.assets.bundles ?? []).map((b) => {
+      // Render legend from whichever list is active.
+      const legendList = wantWiring ? (manifest.assets.wires ?? []) : (manifest.assets.bundles ?? [])
+      const items = legendList.map((b) => {
         const swatch = `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${b.color ?? '#8bd3ff'};margin-right:8px;border:1px solid rgba(255,255,255,0.15)"></span>`
         return `<div style="display:flex;align-items:center;gap:6px;">${swatch}<span style="opacity:0.92">${b.name}</span></div>`
       })
@@ -401,9 +466,9 @@ function main() {
     bundleOpacity: 0.75,
     bundleWidth: 2.5,
     glowMode: true,
+    structuralMode: 'Surface' as 'Surface' | 'Wiring' | 'Both',
     figureMode: false,
     exportPng: () => {
-      // Ensure latest frame is rendered.
       renderer.render(scene, camera)
       const a = document.createElement('a')
       a.download = `brain-wiring-${DATA_TAG}.png`
@@ -429,13 +494,16 @@ function main() {
     ;(wire.material as THREE.LineBasicMaterial).opacity = v
   })
   const layerFolder = gui.addFolder('Layers')
-  layerFolder.add(params, 'bundlesVisible').name('Structural bundles').onChange((v: boolean) => {
+  layerFolder.add(params, 'bundlesVisible').name('Structural').onChange((v: boolean) => {
     bundlesGroup.visible = v
   })
-  layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Bundle opacity').onChange(() => {
+  layerFolder.add(params, 'structuralMode', ['Surface', 'Wiring', 'Both']).name('Structural mode').onChange(() => {
     params.applyDataTag()
   })
-  layerFolder.add(params, 'bundleWidth', 0.5, 8, 0.1).name('Bundle width (px)').onChange(() => {
+  layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Opacity').onChange(() => {
+    params.applyDataTag()
+  })
+  layerFolder.add(params, 'bundleWidth', 0.5, 8, 0.1).name('Width (px)').onChange(() => {
     params.applyDataTag()
   })
   layerFolder.add(params, 'glowMode').name('Glow mode').onChange(() => {
