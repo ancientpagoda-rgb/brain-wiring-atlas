@@ -391,7 +391,7 @@ function main() {
     bundlesVisible: true,
     bundleOpacity: 0.75,
     bundleWidth: 2.5,
-    glowMode: false,
+    glowMode: true,
   }
 
   const gui = new GUI({ title: 'Atlas' })
