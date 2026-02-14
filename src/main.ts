@@ -48,6 +48,27 @@ async function loadGltf(url: string): Promise<THREE.Object3D> {
   })
 }
 
+function normalizeObjectToUnit(obj: THREE.Object3D) {
+  // Centers object at origin and scales so its longest dimension is ~1.
+  const box = new THREE.Box3().setFromObject(obj)
+  const size = new THREE.Vector3()
+  box.getSize(size)
+  const center = new THREE.Vector3()
+  box.getCenter(center)
+  const maxDim = Math.max(size.x, size.y, size.z)
+  const scale = maxDim > 0 ? 1 / maxDim : 1
+
+  obj.traverse((child) => {
+    // ensure bounding boxes update after scaling
+    ;(child as any).frustumCulled = false
+  })
+
+  obj.position.sub(center)
+  obj.scale.multiplyScalar(scale)
+  obj.updateMatrixWorld(true)
+  return { box, size, center, scale }
+}
+
 function parseHexColor(hex: string, fallback = 0x8bd3ff) {
   const h = hex.trim().replace('#', '')
   if (h.length === 6) return parseInt(h, 16)
@@ -202,6 +223,13 @@ function main() {
         if (old) brainGroup.remove(old)
         brainGroup.add(obj)
 
+        normalizeObjectToUnit(obj)
+
+        // Reframe camera/controls roughly around the loaded anatomy.
+        controls.target.set(0, 0, 0)
+        camera.position.set(1.2, 0.6, 1.6)
+        controls.update()
+
         dataStatusEl.innerHTML = `Loaded: <b>${manifest.assets.anatomy.name ?? 'anatomy'}</b>`
       }
 
@@ -220,8 +248,12 @@ function main() {
 
         const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: params.bundleOpacity })
 
+        // Bundles in the pack are authored in "normalized" space (roughly -0.5..0.5).
+        // If/when we switch to real tractography in mm space, we can set a flag in the manifest.
+        const bundleScale = 1.0
+
         for (const line of data.lines) {
-          const pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
+          const pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]).multiplyScalar(bundleScale))
           const geom = new THREE.BufferGeometry().setFromPoints(pts)
           const obj = new THREE.Line(geom, material)
           ;(obj as any).userData = { label: data.name }
