@@ -1,36 +1,46 @@
 import './style.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import GUI from 'lil-gui'
 
-// This will eventually point to a GitHub Release tag that hosts the heavy data packs.
-const DATA_TAG = 'v0.0.0-preview'
+// GitHub Release tag hosting the current heavy data pack.
+let DATA_TAG = 'v0.1-preview'
 
 type Manifest = {
   version: string
   citation?: string
+  notes?: string
   assets: {
-    anatomy?: { url: string }
+    anatomy?: { url: string; name?: string }
     bundles?: Array<{ id: string; name: string; url: string; color?: string }>
   }
 }
 
-function makeReleaseUrl(path: string) {
-  // Replace with your final repo name once created.
-  const owner = 'ancientpagoda-rgb'
-  const repo = 'brain-wiring-atlas'
-  return `https://github.com/${owner}/${repo}/releases/download/${DATA_TAG}/${path}`
+const RELEASE_OWNER = 'ancientpagoda-rgb'
+const RELEASE_REPO = 'brain-wiring-atlas'
+
+function makeReleaseUrl(tag: string, path: string) {
+  return `https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${tag}/${path}`
 }
 
-async function tryLoadManifest(): Promise<Manifest | null> {
-  try {
-    const url = makeReleaseUrl('manifest.json')
-    const res = await fetch(url)
-    if (!res.ok) return null
-    return (await res.json()) as Manifest
-  } catch {
-    return null
-  }
+async function loadManifest(tag: string): Promise<Manifest> {
+  const url = makeReleaseUrl(tag, 'manifest.json')
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to load manifest (${res.status}): ${url}`)
+  return (await res.json()) as Manifest
+}
+
+async function loadGltf(url: string): Promise<THREE.Object3D> {
+  const loader = new GLTFLoader()
+  return new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (gltf) => resolve(gltf.scene),
+      undefined,
+      (err) => reject(err)
+    )
+  })
 }
 
 function main() {
@@ -42,17 +52,20 @@ function main() {
     </header>
     <div id="stage">
       <div class="tooltip" id="tooltip"></div>
-      <div class="legend">
+      <div class="legend" id="legend">
         <b>Legend</b><br/>
         <span style="color:#8bd3ff">Structural</span>: tract bundles (streamline-derived, in canonical space) <br/>
         <span style="color:#ffb86b">Functional</span>: networks/edges (RSNs / connectome overlays)
-        <div style="margin-top:8px; opacity:0.85">Data pack: <code>${DATA_TAG}</code> (via GitHub Releases)</div>
+        <div style="margin-top:8px; opacity:0.85">Data pack: <code id="datatag">${DATA_TAG}</code> (GitHub Releases)</div>
+        <div id="datastatus" style="margin-top:6px; opacity:0.85"></div>
       </div>
     </div>
   `
 
   const stage = document.querySelector<HTMLDivElement>('#stage')!
   const tooltip = document.querySelector<HTMLDivElement>('#tooltip')!
+  const dataTagEl = document.querySelector<HTMLElement>('#datatag')!
+  const dataStatusEl = document.querySelector<HTMLElement>('#datastatus')!
 
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#05060a')
@@ -78,10 +91,12 @@ function main() {
   rim.position.set(-1.2, 0.2, -1.0)
   scene.add(rim)
 
-  // Placeholder "hemisphere cutaway" brain shell (until real anatomy GLB arrives).
-  // A clipped sphere + subtle wire overlay for that diagram look.
+  // Root content group
   const brainGroup = new THREE.Group()
   scene.add(brainGroup)
+
+  // Placeholder "hemisphere cutaway" brain shell (until real anatomy GLB arrives).
+  // A clipped sphere + subtle wire overlay for that diagram look.
 
   const mat = new THREE.MeshStandardMaterial({
     color: 0x1d2a3a,
@@ -161,21 +176,57 @@ function main() {
   renderer.domElement.addEventListener('pointermove', onPointerMove)
   renderer.domElement.addEventListener('pointerleave', () => (tooltip.style.display = 'none'))
 
+  // Kick off initial pack load (will fall back gracefully if it doesn't exist yet).
+  applyDataPack(DATA_TAG)
+
+  async function applyDataPack(tag: string) {
+    dataTagEl.textContent = tag
+    dataStatusEl.textContent = 'Loading data pack…'
+
+    try {
+      const manifest = await loadManifest(tag)
+
+      // Try loading anatomy if provided.
+      if (manifest.assets.anatomy?.url) {
+        const url = manifest.assets.anatomy.url.startsWith('http')
+          ? manifest.assets.anatomy.url
+          : makeReleaseUrl(tag, manifest.assets.anatomy.url)
+
+        const obj = await loadGltf(url)
+        obj.name = 'anatomy'
+
+        // Replace placeholder brain mesh (keep wiring overlay for now).
+        const old = brainGroup.getObjectByName('anatomy')
+        if (old) brainGroup.remove(old)
+        brainGroup.add(obj)
+
+        dataStatusEl.innerHTML = `Loaded: <b>${manifest.assets.anatomy.name ?? 'anatomy'}</b>`
+      } else {
+        dataStatusEl.textContent = manifest.notes ?? 'No anatomy in this pack yet.'
+      }
+    } catch (e) {
+      console.error(e)
+      dataStatusEl.textContent = `Data pack load failed (still using preview geometry).`
+    }
+  }
+
   const params = {
+    dataTag: DATA_TAG,
+    applyDataTag: async () => {
+      DATA_TAG = params.dataTag
+      await applyDataPack(DATA_TAG)
+    },
     cutaway: 0.55,
     wireOpacity: 0.12,
     bundleOpacity: 0.75,
-    tryLoadDataPack: async () => {
-      const manifest = await tryLoadManifest()
-      if (!manifest) {
-        alert('No manifest found in Releases yet (this is expected for the preview).')
-        return
-      }
-      alert(`Found manifest: ${manifest.version}`)
-    },
   }
 
   const gui = new GUI({ title: 'Atlas' })
+  const dataFolder = gui.addFolder('Data pack')
+  dataFolder.add(params, 'dataTag').name('release tag')
+  dataFolder.add(params, 'applyDataTag').name('load')
+  dataFolder.open()
+
   gui.add(params, 'cutaway', 0.1, 1.0, 0.01).onChange((v: number) => {
     brain.scale.x = v
     wire.scale.x = v
@@ -188,7 +239,7 @@ function main() {
       ;((b as THREE.Line).material as THREE.LineBasicMaterial).opacity = v
     })
   })
-  gui.add(params, 'tryLoadDataPack')
+  // (tryLoadDataPack removed; use Data pack folder)
 
   const onResize = () => {
     const w = stage.clientWidth
