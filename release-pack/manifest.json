@@ -1,0 +1,12 @@
+{
+  "version": "v0.1-preview",
+  "notes": "Preview pack: canonical cortex (fsaverage5 pial left) with simple cutaway. Bundles/networks next.",
+  "citation": "Cortex surface derived from fsaverage5 (FreeSurfer) as packaged by Nilearn. License field in Nilearn dataset description is marked 'unknown'; if you have a preferred explicitly-licensed mesh source, we can switch.",
+  "assets": {
+    "anatomy": {
+      "name": "fsaverage5 pial left (cutaway)",
+      "url": "anatomy.glb"
+    },
+    "bundles": []
+  }
+}
