@@ -307,6 +307,9 @@ function main() {
   dataFolder.add(params, 'applyDataTag').name('load')
   dataFolder.open()
 
+  // Kick off initial pack load.
+  params.applyDataTag()
+
   gui.add(params, 'cutaway', 0.1, 1.0, 0.01).onChange((v: number) => {
     brain.scale.x = v
     wire.scale.x = v
