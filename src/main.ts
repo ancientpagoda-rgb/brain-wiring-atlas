@@ -4,8 +4,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import GUI from 'lil-gui'
 
-// GitHub Release tag hosting the current heavy data pack.
-let DATA_TAG = 'v0.1-preview'
+// Data pack tag hosted under /public/packs/<tag>/...
+let DATA_TAG = 'v0.2'
 
 type Manifest = {
   version: string
@@ -27,6 +27,13 @@ function makePackUrl(tag: string, path: string) {
   return `${base}packs/${tag}/${path}?v=${v}`
 }
 
+// Only used for text/binary assets; don't append cache-buster to glTF URLs,
+// because loaders may request range/relative resources in some cases.
+function makePackUrlNoBust(tag: string, path: string) {
+  const base = import.meta.env.BASE_URL
+  return `${base}packs/${tag}/${path}`
+}
+
 async function loadManifest(tag: string): Promise<Manifest> {
   const url = makePackUrl(tag, 'manifest.json')
   const res = await fetch(url)
@@ -37,13 +44,27 @@ async function loadManifest(tag: string): Promise<Manifest> {
 async function loadGltf(url: string): Promise<THREE.Object3D> {
   const loader = new GLTFLoader()
   return new Promise((resolve, reject) => {
-    loader.load(
-      url,
-      (gltf) => resolve(gltf.scene),
-      undefined,
-      (err) => reject(err)
-    )
+    loader.load(url, (gltf) => resolve(gltf.scene), undefined, (err) => reject(err))
   })
+}
+
+function parseHexColor(hex: string, fallback = 0x8bd3ff) {
+  const h = hex.trim().replace('#', '')
+  if (h.length === 6) return parseInt(h, 16)
+  return fallback
+}
+
+type BundleJson = {
+  id: string
+  name: string
+  type: 'polyline'
+  lines: number[][][]
+}
+
+async function loadBundleJson(url: string): Promise<BundleJson> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to load bundle (${res.status}): ${url}`)
+  return (await res.json()) as BundleJson
 }
 
 function main() {
@@ -123,30 +144,12 @@ function main() {
   wire.scale.copy(brain.scale)
   brainGroup.add(wire)
 
-  // Placeholder tract "bundle" cables
-  function makeBundle(name: string, color: number, seed: number) {
-    const points: THREE.Vector3[] = []
-    for (let i = 0; i < 140; i++) {
-      const t = i / 139
-      const a = t * Math.PI * 2
-      const r = 0.15 + 0.12 * Math.sin(a * 2 + seed)
-      const x = (t - 0.5) * 0.5
-      const y = 0.08 * Math.sin(a * 1.2 + seed)
-      const z = r * Math.cos(a + seed)
-      points.push(new THREE.Vector3(x, y, z))
-    }
-    const curve = new THREE.CatmullRomCurve3(points)
-    const g = new THREE.BufferGeometry().setFromPoints(curve.getPoints(500))
-    const m = new THREE.Line(g, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.75 }))
-    ;(m as any).userData = { label: name }
-    return m
-  }
+  // Structural bundles container (loaded from pack)
+  const bundlesGroup = new THREE.Group()
+  bundlesGroup.name = 'bundles'
+  brainGroup.add(bundlesGroup)
 
-  const bundles: THREE.Object3D[] = [
-    makeBundle('Arcuate fasciculus (preview)', 0x8bd3ff, 0.7),
-    makeBundle('Corticospinal tract (preview)', 0x7fffd4, 1.9),
-  ]
-  bundles.forEach((b) => brainGroup.add(b))
+  const bundleObjects = new Map<string, THREE.Object3D>()
 
   // Hover labels via raycaster
   const raycaster = new THREE.Raycaster()
@@ -159,13 +162,13 @@ function main() {
       -(((ev.clientY - rect.top) / rect.height) * 2 - 1)
     )
     raycaster.setFromCamera(mouse, camera)
-    const intersects = raycaster.intersectObjects(bundles, true)
+    const intersects = raycaster.intersectObjects(Array.from(bundleObjects.values()), true)
     if (intersects.length === 0) {
       tooltip.style.display = 'none'
       return
     }
     const obj = intersects[0].object
-    const label = (obj as any).userData?.label ?? (obj.parent as any)?.userData?.label
+    const label = (obj as any).userData?.label ?? (obj.parent as any)?.userData?.label ?? (obj.parent?.parent as any)?.userData?.label
     if (!label) {
       tooltip.style.display = 'none'
       return
@@ -179,9 +182,6 @@ function main() {
   renderer.domElement.addEventListener('pointermove', onPointerMove)
   renderer.domElement.addEventListener('pointerleave', () => (tooltip.style.display = 'none'))
 
-  // Kick off initial pack load (will fall back gracefully if it doesn't exist yet).
-  applyDataPack(DATA_TAG)
-
   async function applyDataPack(tag: string) {
     dataTagEl.textContent = tag
     dataStatusEl.textContent = 'Loading data pack…'
@@ -193,19 +193,47 @@ function main() {
       if (manifest.assets.anatomy?.url) {
         const url = manifest.assets.anatomy.url.startsWith('http')
           ? manifest.assets.anatomy.url
-          : makePackUrl(tag, manifest.assets.anatomy.url)
+          : makePackUrlNoBust(tag, manifest.assets.anatomy.url)
 
         const obj = await loadGltf(url)
         obj.name = 'anatomy'
 
-        // Replace placeholder brain mesh (keep wiring overlay for now).
         const old = brainGroup.getObjectByName('anatomy')
         if (old) brainGroup.remove(old)
         brainGroup.add(obj)
 
         dataStatusEl.innerHTML = `Loaded: <b>${manifest.assets.anatomy.name ?? 'anatomy'}</b>`
-      } else {
-        dataStatusEl.textContent = manifest.notes ?? 'No anatomy in this pack yet.'
+      }
+
+      // Load bundles.
+      bundlesGroup.clear()
+      bundleObjects.clear()
+
+      for (const b of manifest.assets.bundles ?? []) {
+        const bUrl = b.url.startsWith('http') ? b.url : makePackUrl(tag, b.url)
+        const data = await loadBundleJson(bUrl)
+        const color = parseHexColor(b.color ?? '#8bd3ff')
+
+        const group = new THREE.Group()
+        group.name = `bundle:${data.id}`
+        ;(group as any).userData = { label: data.name }
+
+        const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: params.bundleOpacity })
+
+        for (const line of data.lines) {
+          const pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
+          const geom = new THREE.BufferGeometry().setFromPoints(pts)
+          const obj = new THREE.Line(geom, material)
+          ;(obj as any).userData = { label: data.name }
+          group.add(obj)
+        }
+
+        bundlesGroup.add(group)
+        bundleObjects.set(data.id, group)
+      }
+
+      if (!manifest.assets.anatomy?.url) {
+        dataStatusEl.textContent = manifest.notes ?? 'Loaded (no anatomy in this pack).'
       }
     } catch (e) {
       console.error(e)
@@ -223,11 +251,12 @@ function main() {
     cutaway: 0.55,
     wireOpacity: 0.12,
     bundleOpacity: 0.75,
+    bundlesVisible: true,
   }
 
   const gui = new GUI({ title: 'Atlas' })
   const dataFolder = gui.addFolder('Data pack')
-  dataFolder.add(params, 'dataTag').name('release tag')
+  dataFolder.add(params, 'dataTag').name('pack tag')
   dataFolder.add(params, 'applyDataTag').name('load')
   dataFolder.open()
 
@@ -238,12 +267,20 @@ function main() {
   gui.add(params, 'wireOpacity', 0, 0.5, 0.01).onChange((v: number) => {
     ;(wire.material as THREE.LineBasicMaterial).opacity = v
   })
-  gui.add(params, 'bundleOpacity', 0, 1, 0.01).onChange((v: number) => {
-    bundles.forEach((b) => {
-      ;((b as THREE.Line).material as THREE.LineBasicMaterial).opacity = v
-    })
+  const layerFolder = gui.addFolder('Layers')
+  layerFolder.add(params, 'bundlesVisible').name('Structural bundles').onChange((v: boolean) => {
+    bundlesGroup.visible = v
   })
-  // (tryLoadDataPack removed; use Data pack folder)
+  layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Bundle opacity').onChange((v: number) => {
+    // Update materials of loaded bundles.
+    for (const obj of bundleObjects.values()) {
+      obj.traverse((child) => {
+        const mat = (child as any).material as THREE.LineBasicMaterial | undefined
+        if (mat && mat.isLineBasicMaterial) mat.opacity = v
+      })
+    }
+  })
+  layerFolder.open()
 
   const onResize = () => {
     const w = stage.clientWidth
