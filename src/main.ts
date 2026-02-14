@@ -17,15 +17,16 @@ type Manifest = {
   }
 }
 
-const RELEASE_OWNER = 'ancientpagoda-rgb'
-const RELEASE_REPO = 'brain-wiring-atlas'
-
-function makeReleaseUrl(tag: string, path: string) {
-  return `https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${tag}/${path}`
+// NOTE: GitHub Releases asset URLs do not reliably send CORS headers for browser fetch/XHR.
+// So we host packs under the site itself (public/packs/<tag>/...) and still ALSO upload
+// them to Releases for distribution.
+function makePackUrl(tag: string, path: string) {
+  const base = import.meta.env.BASE_URL
+  return `${base}packs/${tag}/${path}`
 }
 
 async function loadManifest(tag: string): Promise<Manifest> {
-  const url = makeReleaseUrl(tag, 'manifest.json')
+  const url = makePackUrl(tag, 'manifest.json')
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Failed to load manifest (${res.status}): ${url}`)
   return (await res.json()) as Manifest
@@ -190,7 +191,7 @@ function main() {
       if (manifest.assets.anatomy?.url) {
         const url = manifest.assets.anatomy.url.startsWith('http')
           ? manifest.assets.anatomy.url
-          : makeReleaseUrl(tag, manifest.assets.anatomy.url)
+          : makePackUrl(tag, manifest.assets.anatomy.url)
 
         const obj = await loadGltf(url)
         obj.name = 'anatomy'
