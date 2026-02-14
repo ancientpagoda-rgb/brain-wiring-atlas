@@ -1,0 +1,16 @@
+{
+  "version": "v0.3",
+  "notes": "Adds bundle thickness + glow/art mode controls. Bundles are still demo geometry; real tractography-derived bundles will replace them without changing the UI.",
+  "citation": "Cortex surface derived from fsaverage5 (FreeSurfer) as packaged by Nilearn. License field in Nilearn dataset description is marked 'unknown'; we should swap to an explicitly-licensed mesh source.",
+  "assets": {
+    "anatomy": {
+      "name": "fsaverage5 pial left (cutaway)",
+      "url": "anatomy.glb"
+    },
+    "bundles": [
+      { "id": "arc", "name": "Arcuate fasciculus (demo)", "url": "bundles/arc.json", "color": "#8bd3ff" },
+      { "id": "cst", "name": "Corticospinal tract (demo)", "url": "bundles/cst.json", "color": "#7fffd4" },
+      { "id": "cing", "name": "Cingulum (demo)", "url": "bundles/cing.json", "color": "#ffd58b" }
+    ]
+  }
+}

@@ -2,10 +2,13 @@ import './style.css'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { Line2 } from 'three/examples/jsm/lines/Line2.js'
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import GUI from 'lil-gui'
 
 // Data pack tag hosted under /public/packs/<tag>/...
-let DATA_TAG = 'v0.2'
+let DATA_TAG = 'v0.3'
 
 type Manifest = {
   version: string
@@ -257,16 +260,46 @@ function main() {
         group.name = `bundle:${data.id}`
         ;(group as any).userData = { label: data.name }
 
-        const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: params.bundleOpacity })
-
         // Bundles in the pack are authored in "normalized" space (roughly -0.5..0.5).
         // If/when we switch to real tractography in mm space, we can set a flag in the manifest.
         const bundleScale = 1.0
 
+        const makeLineObject = (pts: THREE.Vector3[]) => {
+          if (params.bundleWidth <= 1.0) {
+            const material = new THREE.LineBasicMaterial({
+              color,
+              transparent: true,
+              opacity: params.bundleOpacity,
+              blending: params.glowMode ? THREE.AdditiveBlending : THREE.NormalBlending,
+            })
+            const geom = new THREE.BufferGeometry().setFromPoints(pts)
+            return new THREE.Line(geom, material)
+          }
+
+          // Wide lines (screen-space) using Line2.
+          const positions: number[] = []
+          for (const p of pts) positions.push(p.x, p.y, p.z)
+          const geom = new LineGeometry()
+          geom.setPositions(positions)
+
+          const mat = new LineMaterial({
+            color,
+            linewidth: params.bundleWidth, // in pixels
+            transparent: true,
+            opacity: params.bundleOpacity,
+            dashed: false,
+          })
+          mat.blending = params.glowMode ? THREE.AdditiveBlending : THREE.NormalBlending
+          mat.depthTest = true
+
+          const line2 = new Line2(geom, mat)
+          line2.computeLineDistances()
+          return line2
+        }
+
         for (const line of data.lines) {
           const pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]).multiplyScalar(bundleScale))
-          const geom = new THREE.BufferGeometry().setFromPoints(pts)
-          const obj = new THREE.Line(geom, material)
+          const obj = makeLineObject(pts)
           ;(obj as any).userData = { label: data.name }
           group.add(obj)
         }
@@ -297,8 +330,10 @@ function main() {
     },
     cutaway: 0.55,
     wireOpacity: 0.12,
-    bundleOpacity: 0.75,
     bundlesVisible: true,
+    bundleOpacity: 0.75,
+    bundleWidth: 2.5,
+    glowMode: false,
   }
 
   const gui = new GUI({ title: 'Atlas' })
@@ -321,14 +356,14 @@ function main() {
   layerFolder.add(params, 'bundlesVisible').name('Structural bundles').onChange((v: boolean) => {
     bundlesGroup.visible = v
   })
-  layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Bundle opacity').onChange((v: number) => {
-    // Update materials of loaded bundles.
-    for (const obj of bundleObjects.values()) {
-      obj.traverse((child) => {
-        const mat = (child as any).material as THREE.LineBasicMaterial | undefined
-        if (mat && mat.isLineBasicMaterial) mat.opacity = v
-      })
-    }
+  layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Bundle opacity').onChange(() => {
+    params.applyDataTag()
+  })
+  layerFolder.add(params, 'bundleWidth', 0.5, 8, 0.1).name('Bundle width (px)').onChange(() => {
+    params.applyDataTag()
+  })
+  layerFolder.add(params, 'glowMode').name('Glow mode').onChange(() => {
+    params.applyDataTag()
   })
   layerFolder.open()
 
@@ -338,6 +373,16 @@ function main() {
     renderer.setSize(w, h, false)
     camera.aspect = w / h
     camera.updateProjectionMatrix()
+
+    // Update resolution for wide line materials.
+    for (const obj of bundleObjects.values()) {
+      obj.traverse((child) => {
+        const mat = (child as any).material as LineMaterial | undefined
+        if (mat && (mat as any).isLineMaterial) {
+          mat.resolution.set(w, h)
+        }
+      })
+    }
   }
   new ResizeObserver(onResize).observe(stage)
   onResize()
