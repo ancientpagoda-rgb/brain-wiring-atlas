@@ -8,7 +8,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import GUI from 'lil-gui'
 
 // Data pack tag hosted under /public/packs/<tag>/...
-let DATA_TAG = 'v0.4'
+let DATA_TAG = 'v0.5'
 
 type Manifest = {
   version: string
@@ -103,10 +103,11 @@ function main() {
       <div class="tooltip" id="tooltip"></div>
       <div class="legend" id="legend">
         <b>Legend</b><br/>
-        <span style="color:#8bd3ff">Structural</span>: tract bundles (streamline-derived, in canonical space) <br/>
+        <span style="color:#8bd3ff">Structural</span>: tract bundles (atlas-derived) <br/>
         <span style="color:#ffb86b">Functional</span>: networks/edges (RSNs / connectome overlays)
-        <div style="margin-top:8px; opacity:0.85">Data pack: <code id="datatag">${DATA_TAG}</code> (GitHub Releases)</div>
+        <div style="margin-top:8px; opacity:0.85">Data pack: <code id="datatag">${DATA_TAG}</code></div>
         <div id="datastatus" style="margin-top:6px; opacity:0.85"></div>
+        <div id="bundlelegend" style="margin-top:8px"></div>
       </div>
     </div>
   `
@@ -115,6 +116,7 @@ function main() {
   const tooltip = document.querySelector<HTMLDivElement>('#tooltip')!
   const dataTagEl = document.querySelector<HTMLElement>('#datatag')!
   const dataStatusEl = document.querySelector<HTMLElement>('#datastatus')!
+  const bundleLegendEl = document.querySelector<HTMLElement>('#bundlelegend')!
 
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#05060a')
@@ -348,6 +350,13 @@ function main() {
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
       dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • bundles: <b>${bundleCount}</b>`
 
+      // Render legend from manifest bundle list.
+      const items = (manifest.assets.bundles ?? []).map((b) => {
+        const swatch = `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${b.color ?? '#8bd3ff'};margin-right:8px;border:1px solid rgba(255,255,255,0.15)"></span>`
+        return `<div style="display:flex;align-items:center;gap:6px;">${swatch}<span style="opacity:0.92">${b.name}</span></div>`
+      })
+      bundleLegendEl.innerHTML = items.join('')
+
       // Frame camera to bounds of (anatomy + bundles), excluding debug helpers and placeholders.
       {
         const box = new THREE.Box3()
@@ -392,6 +401,15 @@ function main() {
     bundleOpacity: 0.75,
     bundleWidth: 2.5,
     glowMode: true,
+    figureMode: false,
+    exportPng: () => {
+      // Ensure latest frame is rendered.
+      renderer.render(scene, camera)
+      const a = document.createElement('a')
+      a.download = `brain-wiring-${DATA_TAG}.png`
+      a.href = renderer.domElement.toDataURL('image/png')
+      a.click()
+    },
   }
 
   const gui = new GUI({ title: 'Atlas' })
@@ -424,6 +442,14 @@ function main() {
     params.applyDataTag()
   })
   layerFolder.open()
+
+  const figureFolder = gui.addFolder('Figure')
+  figureFolder.add(params, 'figureMode').name('Figure mode').onChange((v: boolean) => {
+    const legend = document.querySelector<HTMLElement>('#legend')!
+    legend.style.display = v ? 'none' : 'block'
+    gui.domElement.style.display = v ? 'none' : 'block'
+  })
+  figureFolder.add(params, 'exportPng').name('Export PNG')
 
   const onResize = () => {
     const w = stage.clientWidth

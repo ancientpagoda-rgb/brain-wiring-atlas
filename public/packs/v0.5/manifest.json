@@ -1,0 +1,23 @@
+{
+  "version": "v0.5",
+  "notes": "More CC-BY-4.0 atlas-derived left-hemisphere tract meshes (Pandora TractSeg).",
+  "citation": "Bundles derived from MASILab/Pandora-WhiteMatterAtlas (CC-BY-4.0). Preprint: https://www.biorxiv.org/content/10.1101/2020.06.12.148999v1.full",
+  "assets": {
+    "anatomy": {
+      "name": "fsaverage5 pial left (cutaway)",
+      "url": "anatomy.glb"
+    },
+    "bundles": [
+      { "id": "afl", "name": "Arcuate fascicle (L)", "type": "mesh", "url": "bundles/AF_left.glb", "color": "#8bd3ff" },
+      { "id": "atr", "name": "Anterior thalamic radiation (L)", "type": "mesh", "url": "bundles/ATR_left.glb", "color": "#9ad8ff" },
+      { "id": "cgl", "name": "Cingulum (L)", "type": "mesh", "url": "bundles/CG_left.glb", "color": "#ffd58b" },
+      { "id": "cstl", "name": "Corticospinal tract (L)", "type": "mesh", "url": "bundles/CST_left.glb", "color": "#7fffd4" },
+      { "id": "ifo", "name": "Inferior occipito-frontal fascicle (L)", "type": "mesh", "url": "bundles/IFO_left.glb", "color": "#c4b5ff" },
+      { "id": "ilf", "name": "Inferior longitudinal fascicle (L)", "type": "mesh", "url": "bundles/ILF_left.glb", "color": "#ff9ad1" },
+      { "id": "or", "name": "Optic radiation (L)", "type": "mesh", "url": "bundles/OR_left.glb", "color": "#ffea7a" },
+      { "id": "slf2", "name": "Superior longitudinal fascicle II (L)", "type": "mesh", "url": "bundles/SLF_II_left.glb", "color": "#9effa1" },
+      { "id": "slf3", "name": "Superior longitudinal fascicle III (L)", "type": "mesh", "url": "bundles/SLF_III_left.glb", "color": "#63ffa6" },
+      { "id": "uf", "name": "Uncinate fascicle (L)", "type": "mesh", "url": "bundles/UF_left.glb", "color": "#ffb86b" }
+    ]
+  }
+}
