@@ -624,9 +624,6 @@ function main() {
   function buildFunctionalNetworks() {
     functionalGroup.clear()
 
-    const s = normalizedRoot.scale.x || 1
-    const t = normalizedRoot.position.clone()
-
     const buildNet = (net: NetDef) => {
       const netGroup = new THREE.Group()
       netGroup.name = `net:${net.id}`
@@ -644,7 +641,11 @@ function main() {
         const m = new THREE.Mesh(geom, sphereMat)
         m.name = `netnode:${net.id}:${n.id}`
         ;(m as any).userData = { label: `${net.name}: ${n.label}` }
-        m.position.set(n.p[0] * s + t.x, n.p[1] * s + t.y, n.p[2] * s + t.z)
+
+        // IMPORTANT: Nodes are authored in world-mm coordinates.
+        // Since functionalGroup is a child of normalizedRoot, they will be normalized automatically.
+        m.position.set(n.p[0], n.p[1], n.p[2])
+
         netGroup.add(m)
         nodeMeshes[n.id] = m
       }
