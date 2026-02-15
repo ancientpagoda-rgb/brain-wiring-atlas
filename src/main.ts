@@ -207,6 +207,11 @@ function main() {
   functionalGroup.name = 'functional'
   normalizedRoot.add(functionalGroup)
 
+  // Neurochemistry overlays.
+  const neurochemGroup = new THREE.Group()
+  neurochemGroup.name = 'neurochem'
+  normalizedRoot.add(neurochemGroup)
+
   // Hover labels via raycaster
   const raycaster = new THREE.Raycaster()
   const mouse = new THREE.Vector2()
@@ -507,6 +512,10 @@ function main() {
     netVisual: true,
     netSomatomotor: true,
 
+    // Neurochemistry
+    dopamine: false,
+    neurochemOpacity: 0.55,
+
     figureMode: false,
     exportPng: () => {
       renderer.render(scene, camera)
@@ -700,8 +709,91 @@ function main() {
     return line2
   }
 
+  function buildNeurochemistry() {
+    neurochemGroup.clear()
+    neurochemGroup.visible = params.dopamine
+    if (!params.dopamine) return
+
+    const purple = 0xb06cff
+
+    const nodeMat = new THREE.MeshBasicMaterial({
+      color: purple,
+      transparent: true,
+      opacity: Math.min(1, params.neurochemOpacity + 0.25),
+    })
+
+    const makeNode = (id: string, label: string, p: [number, number, number]) => {
+      const geom = new THREE.SphereGeometry(0.020, 18, 18)
+      const m = new THREE.Mesh(geom, nodeMat)
+      m.name = `da-node:${id}`
+      ;(m as any).userData = { label: `Dopamine: ${label}` }
+      m.position.set(p[0], p[1], p[2])
+      neurochemGroup.add(m)
+      return m
+    }
+
+    // Very rough canonical locations (world-mm-ish) for schematic purposes.
+    const VTA = makeNode('VTA', 'VTA', [0, -16, -14])
+    const SNc = makeNode('SNc', 'SNc', [0, -22, -10])
+
+    const NAcc = makeNode('NAcc', 'NAcc / ventral striatum', [0, 10, -6])
+    const DStr = makeNode('DStr', 'Dorsal striatum', [0, 4, 6])
+    const mPFC = makeNode('mPFC', 'mPFC/vmPFC', [0, 48, 4])
+
+    const makeWire = (a: THREE.Vector3, b: THREE.Vector3) => {
+      const obj = makeFunctionalEdge(a, b, purple)
+      obj.traverse((child) => {
+        const mat = (child as any).material
+        if (mat && typeof mat.opacity === 'number') mat.opacity = params.neurochemOpacity
+      })
+      return obj
+    }
+
+    const makeField = (a: THREE.Vector3, b: THREE.Vector3) => {
+      const dir = new THREE.Vector3().subVectors(b, a)
+      const len = dir.length()
+      if (len <= 1e-6) return null
+      dir.normalize()
+
+      const cone = new THREE.ConeGeometry(2.5, len, 24, 1, true)
+      const mat = new THREE.MeshBasicMaterial({
+        color: purple,
+        transparent: true,
+        opacity: Math.max(0.08, params.neurochemOpacity * 0.18),
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+      const mesh = new THREE.Mesh(cone, mat)
+      mesh.position.copy(a.clone().add(b).multiplyScalar(0.5))
+      // orient cone from a->b
+      const axis = new THREE.Vector3(0, 1, 0)
+      const quat = new THREE.Quaternion().setFromUnitVectors(axis, dir)
+      mesh.quaternion.copy(quat)
+      return mesh
+    }
+
+    // Mesolimbic: VTA -> NAcc
+    neurochemGroup.add(makeWire(VTA.position, NAcc.position))
+    const f1 = makeField(VTA.position, NAcc.position)
+    if (f1) neurochemGroup.add(f1)
+
+    // Nigrostriatal: SNc -> dorsal striatum
+    neurochemGroup.add(makeWire(SNc.position, DStr.position))
+    const f2 = makeField(SNc.position, DStr.position)
+    if (f2) neurochemGroup.add(f2)
+
+    // Mesocortical: VTA -> mPFC
+    neurochemGroup.add(makeWire(VTA.position, mPFC.position))
+    const f3 = makeField(VTA.position, mPFC.position)
+    if (f3) neurochemGroup.add(f3)
+  }
+
   // Kick off initial pack load.
-  params.applyDataTag().then(() => buildFunctionalNetworks())
+  params.applyDataTag().then(() => {
+    buildFunctionalNetworks()
+    buildNeurochemistry()
+  })
 
   gui.add(params, 'cutaway', 0.1, 1.0, 0.01).onChange((v: number) => {
     brain.scale.x = v
@@ -724,6 +816,11 @@ function main() {
   funcFolder.add(params, 'functionalNodeSize', 0.005, 0.05, 0.001).name('Node size').onChange(() => buildFunctionalNetworks())
   funcFolder.add(params, 'dmnSizeBoost', 1.0, 3.0, 0.1).name('DMN size boost').onChange(() => buildFunctionalNetworks())
   funcFolder.open()
+
+  const chemFolder = gui.addFolder('Neurochemistry')
+  chemFolder.add(params, 'dopamine').name('Dopamine').onChange(() => buildNeurochemistry())
+  chemFolder.add(params, 'neurochemOpacity', 0, 1, 0.01).name('Opacity').onChange(() => buildNeurochemistry())
+  chemFolder.open()
   layerFolder.add(params, 'structuralMode', ['Surface', 'Wiring', 'Both']).name('Structural mode').onChange((v: string) => {
     // Instant toggle: just change visibility of loaded objects.
     const showSurface = v === 'Surface' || v === 'Both'
