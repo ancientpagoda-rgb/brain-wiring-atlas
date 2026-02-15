@@ -293,6 +293,8 @@ function main() {
             blending: THREE.AdditiveBlending,
           })
           const geom = new THREE.BufferGeometry().setFromPoints(pts)
+          geom.computeBoundingBox()
+          geom.computeBoundingSphere()
           return new THREE.Line(geom, material)
         }
 
@@ -300,6 +302,8 @@ function main() {
         for (const p of pts) positions.push(p.x, p.y, p.z)
         const geom = new LineGeometry()
         geom.setPositions(positions)
+        ;(geom as any).computeBoundingBox?.()
+        ;(geom as any).computeBoundingSphere?.()
 
         const mat = new LineMaterial({
           color,
