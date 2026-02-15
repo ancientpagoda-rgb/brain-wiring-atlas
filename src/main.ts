@@ -268,6 +268,21 @@ function main() {
         anatomyNorm = computeNormalization(obj)
         applyNormalization(obj, anatomyNorm)
         anatomyObj = obj
+
+        // Ensure anatomy is visible (Pandora surface comes in without useful materials).
+        obj.traverse((child) => {
+          const mesh = child as THREE.Mesh
+          if (!mesh.isMesh) return
+          mesh.material = new THREE.MeshStandardMaterial({
+            color: 0x162234,
+            transparent: true,
+            opacity: 0.18,
+            roughness: 1,
+            metalness: 0,
+            emissive: new THREE.Color(0x0b1626),
+            emissiveIntensity: 0.6,
+          })
+        })
       }
 
       // Load structural layers (Surface meshes and/or Wiring centerlines).
@@ -408,11 +423,12 @@ function main() {
         params.applyDataTag()
       }
 
-      // Frame camera to bounds of (anatomy + bundles), excluding debug helpers and placeholders.
+      // Frame camera.
+      // For Wiring mode, frame to anatomy only (Line2 bounds can be flaky and cause tiny/off-center framing).
       {
         const box = new THREE.Box3()
         if (anatomyObj) box.expandByObject(anatomyObj)
-        box.expandByObject(bundlesGroup)
+        if (wantSurface) box.expandByObject(bundlesGroup)
 
         const size = new THREE.Vector3()
         box.getSize(size)
@@ -420,12 +436,12 @@ function main() {
         box.getCenter(center)
 
         const maxDim = Math.max(size.x, size.y, size.z)
-        const dist = maxDim > 0 ? maxDim * 2.4 : 2.4
+        const dist = maxDim > 0 ? maxDim * 2.2 : 2.2
 
         controls.target.copy(center)
-        camera.position.copy(center.clone().add(new THREE.Vector3(dist, dist * 0.25, dist * 0.9)))
+        camera.position.copy(center.clone().add(new THREE.Vector3(dist, dist * 0.22, dist * 0.85)))
         camera.near = Math.max(0.001, dist / 200)
-        camera.far = Math.max(10, dist * 50)
+        camera.far = Math.max(10, dist * 80)
         camera.updateProjectionMatrix()
         controls.update()
       }
