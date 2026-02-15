@@ -1,0 +1,42 @@
+{
+  "version": "v0.9",
+  "notes": "Full brain (LH+RH) anatomy + bilateral tract surfaces and wiring, derived from Pandora TractSeg atlas.",
+  "citation": "MASILab/Pandora-WhiteMatterAtlas (CC-BY-4.0). Preprint: https://www.biorxiv.org/content/10.1101/2020.06.12.148999v1.full",
+  "assets": {
+    "anatomy": {
+      "name": "Pandora TractSeg LH+RH surface (template)",
+      "url": "anatomy.glb"
+    },
+    "bundles": [
+      { "id": "afl", "name": "Arcuate fascicle (L)", "meshUrl": "bundles/AF_left.glb", "wireUrl": "wires/AF_left_wire.json", "color": "#8bd3ff" },
+      { "id": "afr", "name": "Arcuate fascicle (R)", "meshUrl": "bundles/AF_right.glb", "wireUrl": "wires/AF_right_wire.json", "color": "#8bd3ff" },
+
+      { "id": "atrl", "name": "Anterior thalamic radiation (L)", "meshUrl": "bundles/ATR_left.glb", "wireUrl": "wires/ATR_left_wire.json", "color": "#9ad8ff" },
+      { "id": "atrr", "name": "Anterior thalamic radiation (R)", "meshUrl": "bundles/ATR_right.glb", "wireUrl": "wires/ATR_right_wire.json", "color": "#9ad8ff" },
+
+      { "id": "cgl", "name": "Cingulum (L)", "meshUrl": "bundles/CG_left.glb", "wireUrl": "wires/CG_left_wire.json", "color": "#ffd58b" },
+      { "id": "cgr", "name": "Cingulum (R)", "meshUrl": "bundles/CG_right.glb", "wireUrl": "wires/CG_right_wire.json", "color": "#ffd58b" },
+
+      { "id": "cstl", "name": "Corticospinal tract (L)", "meshUrl": "bundles/CST_left.glb", "wireUrl": "wires/CST_left_wire.json", "color": "#7fffd4" },
+      { "id": "cstr", "name": "Corticospinal tract (R)", "meshUrl": "bundles/CST_right.glb", "wireUrl": "wires/CST_right_wire.json", "color": "#7fffd4" },
+
+      { "id": "ifol", "name": "Inferior occipito-frontal fascicle (L)", "meshUrl": "bundles/IFO_left.glb", "wireUrl": "wires/IFO_left_wire.json", "color": "#c4b5ff" },
+      { "id": "ifor", "name": "Inferior occipito-frontal fascicle (R)", "meshUrl": "bundles/IFO_right.glb", "wireUrl": "wires/IFO_right_wire.json", "color": "#c4b5ff" },
+
+      { "id": "ilfl", "name": "Inferior longitudinal fascicle (L)", "meshUrl": "bundles/ILF_left.glb", "wireUrl": "wires/ILF_left_wire.json", "color": "#ff9ad1" },
+      { "id": "ilfr", "name": "Inferior longitudinal fascicle (R)", "meshUrl": "bundles/ILF_right.glb", "wireUrl": "wires/ILF_right_wire.json", "color": "#ff9ad1" },
+
+      { "id": "orl", "name": "Optic radiation (L)", "meshUrl": "bundles/OR_left.glb", "wireUrl": "wires/OR_left_wire.json", "color": "#ffea7a" },
+      { "id": "orr", "name": "Optic radiation (R)", "meshUrl": "bundles/OR_right.glb", "wireUrl": "wires/OR_right_wire.json", "color": "#ffea7a" },
+
+      { "id": "slf2l", "name": "Superior longitudinal fascicle II (L)", "meshUrl": "bundles/SLF_II_left.glb", "wireUrl": "wires/SLF_II_left_wire.json", "color": "#9effa1" },
+      { "id": "slf2r", "name": "Superior longitudinal fascicle II (R)", "meshUrl": "bundles/SLF_II_right.glb", "wireUrl": "wires/SLF_II_right_wire.json", "color": "#9effa1" },
+
+      { "id": "slf3l", "name": "Superior longitudinal fascicle III (L)", "meshUrl": "bundles/SLF_III_left.glb", "wireUrl": "wires/SLF_III_left_wire.json", "color": "#63ffa6" },
+      { "id": "slf3r", "name": "Superior longitudinal fascicle III (R)", "meshUrl": "bundles/SLF_III_right.glb", "wireUrl": "wires/SLF_III_right_wire.json", "color": "#63ffa6" },
+
+      { "id": "ufl", "name": "Uncinate fascicle (L)", "meshUrl": "bundles/UF_left.glb", "wireUrl": "wires/UF_left_wire.json", "color": "#ffb86b" },
+      { "id": "ufr", "name": "Uncinate fascicle (R)", "meshUrl": "bundles/UF_right.glb", "wireUrl": "wires/UF_right_wire.json", "color": "#ffb86b" }
+    ]
+  }
+}

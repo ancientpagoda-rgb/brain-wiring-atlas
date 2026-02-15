@@ -9,7 +9,7 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import GUI from 'lil-gui'
 
 // Data pack tag hosted under /public/packs/<tag>/...
-let DATA_TAG = 'v0.8'
+let DATA_TAG = 'v0.9'
 
 type Manifest = {
   version: string
