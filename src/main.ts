@@ -495,17 +495,17 @@ function main() {
     bundleWidth: 2.5,
     glowMode: true,
     structuralMode: 'Wiring' as 'Surface' | 'Wiring' | 'Both',
-    enabledBundleIds: new Set<string>(),
+    enabledBundleIds: new Set<string>(), // populated with all bundles on load
 
     // Functional
     functionalOpacity: 0.75,
     functionalNodeSize: 0.018,
     dmnSizeBoost: 1.6,
     netDMN: true,
-    netSalience: false,
-    netDorsalAttention: false,
-    netVisual: false,
-    netSomatomotor: false,
+    netSalience: true,
+    netDorsalAttention: true,
+    netVisual: true,
+    netSomatomotor: true,
 
     figureMode: false,
     exportPng: () => {
