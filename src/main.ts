@@ -202,8 +202,7 @@ function main() {
 
   const bundleObjects = new Map<string, THREE.Object3D>()
 
-  // Functional overlays (start with a clean, self-contained DMN "node+edge" overlay).
-  // This is a placeholder for future atlas-based surface overlays.
+  // Functional overlays (node+edge style for now; surface overlays later).
   const functionalGroup = new THREE.Group()
   functionalGroup.name = 'functional'
   normalizedRoot.add(functionalGroup)
@@ -499,9 +498,13 @@ function main() {
     enabledBundleIds: new Set<string>(),
 
     // Functional
-    functionalVisible: true,
     functionalOpacity: 0.75,
     functionalNodeSize: 0.018,
+    netDMN: true,
+    netSalience: false,
+    netDorsalAttention: false,
+    netVisual: false,
+    netSomatomotor: false,
 
     figureMode: false,
     exportPng: () => {
@@ -520,64 +523,146 @@ function main() {
   dataFolder.add(params, 'frame').name('frame view')
   dataFolder.open()
 
-  function buildFunctionalDMN() {
+  type NetDef = {
+    id: string
+    name: string
+    color: number
+    nodes: Array<{ id: string; label: string; p: [number, number, number] }>
+    edges: Array<[string, string]>
+  }
+
+  const NETS: Record<string, NetDef> = {
+    DMN: {
+      id: 'DMN',
+      name: 'Default Mode',
+      color: 0xffb86b,
+      nodes: [
+        { id: 'mPFC', label: 'mPFC', p: [0, 52, -2] },
+        { id: 'PCC', label: 'PCC/Precuneus', p: [0, -52, 26] },
+        { id: 'LAG', label: 'L Angular', p: [-45, -68, 34] },
+        { id: 'RAG', label: 'R Angular', p: [45, -68, 34] },
+        { id: 'LMTL', label: 'L MTL', p: [-24, -20, -18] },
+        { id: 'RMTL', label: 'R MTL', p: [24, -20, -18] },
+      ],
+      edges: [
+        ['mPFC', 'PCC'],
+        ['PCC', 'LAG'],
+        ['PCC', 'RAG'],
+        ['PCC', 'LMTL'],
+        ['PCC', 'RMTL'],
+      ],
+    },
+    SAL: {
+      id: 'SAL',
+      name: 'Salience',
+      color: 0xff4d6d,
+      nodes: [
+        { id: 'dACC', label: 'dACC', p: [0, 20, 28] },
+        { id: 'Lins', label: 'L Insula', p: [-34, 20, 2] },
+        { id: 'Rins', label: 'R Insula', p: [34, 20, 2] },
+        { id: 'Lamg', label: 'L Amygdala', p: [-22, -4, -16] },
+        { id: 'Ramg', label: 'R Amygdala', p: [22, -4, -16] },
+      ],
+      edges: [
+        ['dACC', 'Lins'],
+        ['dACC', 'Rins'],
+        ['Lins', 'Lamg'],
+        ['Rins', 'Ramg'],
+      ],
+    },
+    DAN: {
+      id: 'DAN',
+      name: 'Dorsal Attention',
+      color: 0x6fe8ff,
+      nodes: [
+        { id: 'LFEF', label: 'L FEF', p: [-28, -2, 50] },
+        { id: 'RFEF', label: 'R FEF', p: [28, -2, 50] },
+        { id: 'LIPS', label: 'L IPS', p: [-28, -60, 48] },
+        { id: 'RIPS', label: 'R IPS', p: [28, -60, 48] },
+      ],
+      edges: [
+        ['LFEF', 'LIPS'],
+        ['RFEF', 'RIPS'],
+        ['LIPS', 'RIPS'],
+      ],
+    },
+    VIS: {
+      id: 'VIS',
+      name: 'Visual',
+      color: 0xffea7a,
+      nodes: [
+        { id: 'LV1', label: 'L V1', p: [-10, -92, 2] },
+        { id: 'RV1', label: 'R V1', p: [10, -92, 2] },
+        { id: 'LMT', label: 'L MT+', p: [-46, -72, 2] },
+        { id: 'RMT', label: 'R MT+', p: [46, -72, 2] },
+      ],
+      edges: [
+        ['LV1', 'LMT'],
+        ['RV1', 'RMT'],
+        ['LV1', 'RV1'],
+      ],
+    },
+    SMN: {
+      id: 'SMN',
+      name: 'Somatomotor',
+      color: 0x9effa1,
+      nodes: [
+        { id: 'LS1', label: 'L S1/M1', p: [-36, -24, 56] },
+        { id: 'RS1', label: 'R S1/M1', p: [36, -24, 56] },
+        { id: 'LSMA', label: 'L SMA', p: [-4, -6, 58] },
+        { id: 'RSMA', label: 'R SMA', p: [4, -6, 58] },
+      ],
+      edges: [
+        ['LS1', 'LSMA'],
+        ['RS1', 'RSMA'],
+        ['LS1', 'RS1'],
+      ],
+    },
+  }
+
+  function buildFunctionalNetworks() {
     functionalGroup.clear()
 
-    // Approximate MNI-ish coordinates for common DMN hubs (mm).
-    // These are intentionally coarse, meant for visualization.
-    const nodes = [
-      { id: 'mPFC', label: 'mPFC', p: [0, 52, -2] },
-      { id: 'PCC', label: 'PCC/Precuneus', p: [0, -52, 26] },
-      { id: 'LAG', label: 'L Angular', p: [-45, -68, 34] },
-      { id: 'RAG', label: 'R Angular', p: [45, -68, 34] },
-      { id: 'LMTL', label: 'L MTL', p: [-24, -20, -18] },
-      { id: 'RMTL', label: 'R MTL', p: [24, -20, -18] },
-    ]
-
-    // If we have a normalization (anatomyNorm), use the *inverse* of normalizedRoot transform
-    // implicitly by mapping points into normalizedRoot space ourselves.
-    // We can recover it from normalizedRoot: scale is uniform.
     const s = normalizedRoot.scale.x || 1
     const t = normalizedRoot.position.clone()
 
-    const color = 0xffb86b
+    const buildNet = (net: NetDef) => {
+      const netGroup = new THREE.Group()
+      netGroup.name = `net:${net.id}`
 
-    const sphereMat = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: params.functionalOpacity,
-    })
+      const sphereMat = new THREE.MeshBasicMaterial({
+        color: net.color,
+        transparent: true,
+        opacity: params.functionalOpacity,
+      })
 
-    const nodeMeshes: Record<string, THREE.Object3D> = {}
+      const nodeMeshes: Record<string, THREE.Mesh> = {}
+      for (const n of net.nodes) {
+        const geom = new THREE.SphereGeometry(params.functionalNodeSize, 16, 16)
+        const m = new THREE.Mesh(geom, sphereMat)
+        m.name = `netnode:${net.id}:${n.id}`
+        ;(m as any).userData = { label: `${net.name}: ${n.label}` }
+        m.position.set(n.p[0] * s + t.x, n.p[1] * s + t.y, n.p[2] * s + t.z)
+        netGroup.add(m)
+        nodeMeshes[n.id] = m
+      }
 
-    for (const n of nodes) {
-      const geom = new THREE.SphereGeometry(params.functionalNodeSize, 16, 16)
-      const m = new THREE.Mesh(geom, sphereMat)
-      m.name = `dmn-node:${n.id}`
-      ;(m as any).userData = { label: `DMN: ${n.label}` }
-      // Convert world-mm -> normalizedRoot local by applying: p' = p*s + t
-      m.position.set(n.p[0] * s + t.x, n.p[1] * s + t.y, n.p[2] * s + t.z)
-      functionalGroup.add(m)
-      nodeMeshes[n.id] = m
+      for (const [a, b] of net.edges) {
+        const pa = nodeMeshes[a]?.position
+        const pb = nodeMeshes[b]?.position
+        if (!pa || !pb) continue
+        const obj = makeFunctionalEdge(pa, pb, net.color)
+        netGroup.add(obj)
+      }
+
+      functionalGroup.add(netGroup)
     }
 
-    // Edges
-    const edges: Array<[string, string]> = [
-      ['mPFC', 'PCC'],
-      ['PCC', 'LAG'],
-      ['PCC', 'RAG'],
-      ['PCC', 'LMTL'],
-      ['PCC', 'RMTL'],
-    ]
-
-    for (const [a, b] of edges) {
-      const pa = (nodeMeshes[a] as any).position as THREE.Vector3
-      const pb = (nodeMeshes[b] as any).position as THREE.Vector3
-      const obj = makeFunctionalEdge(pa, pb, color)
-      functionalGroup.add(obj)
-    }
-
-    functionalGroup.visible = params.functionalVisible
+    if (params.netDMN) buildNet(NETS.DMN)
+    if (params.netSalience) buildNet(NETS.SAL)
+    if (params.netDorsalAttention) buildNet(NETS.DAN)
+    if (params.netVisual) buildNet(NETS.VIS)
+    if (params.netSomatomotor) buildNet(NETS.SMN)
   }
 
   function makeFunctionalEdge(a: THREE.Vector3, b: THREE.Vector3, color: number) {
@@ -613,7 +698,7 @@ function main() {
   }
 
   // Kick off initial pack load.
-  params.applyDataTag().then(() => buildFunctionalDMN())
+  params.applyDataTag().then(() => buildFunctionalNetworks())
 
   gui.add(params, 'cutaway', 0.1, 1.0, 0.01).onChange((v: number) => {
     brain.scale.x = v
@@ -626,9 +711,15 @@ function main() {
   layerFolder.add(params, 'bundlesVisible').name('Structural').onChange((v: boolean) => {
     bundlesGroup.visible = v
   })
-  layerFolder.add(params, 'functionalVisible').name('Functional (DMN)').onChange((v: boolean) => {
-    functionalGroup.visible = v
-  })
+  const funcFolder = gui.addFolder('Functional networks')
+  funcFolder.add(params, 'netDMN').name('Default Mode (DMN)').onChange(() => buildFunctionalNetworks())
+  funcFolder.add(params, 'netSalience').name('Salience').onChange(() => buildFunctionalNetworks())
+  funcFolder.add(params, 'netDorsalAttention').name('Dorsal Attention').onChange(() => buildFunctionalNetworks())
+  funcFolder.add(params, 'netVisual').name('Visual').onChange(() => buildFunctionalNetworks())
+  funcFolder.add(params, 'netSomatomotor').name('Somatomotor').onChange(() => buildFunctionalNetworks())
+  funcFolder.add(params, 'functionalOpacity', 0, 1, 0.01).name('Opacity').onChange(() => buildFunctionalNetworks())
+  funcFolder.add(params, 'functionalNodeSize', 0.005, 0.05, 0.001).name('Node size').onChange(() => buildFunctionalNetworks())
+  funcFolder.open()
   layerFolder.add(params, 'structuralMode', ['Surface', 'Wiring', 'Both']).name('Structural mode').onChange((v: string) => {
     // Instant toggle: just change visibility of loaded objects.
     const showSurface = v === 'Surface' || v === 'Both'
@@ -648,16 +739,7 @@ function main() {
   layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Structural opacity').onChange(() => {
     params.applyDataTag()
   })
-  layerFolder.add(params, 'functionalOpacity', 0, 1, 0.01).name('Functional opacity').onChange((v: number) => {
-    functionalGroup.traverse((child) => {
-      const mat = (child as any).material
-      if (mat && typeof mat.opacity === 'number') mat.opacity = v
-    })
-  })
-  layerFolder.add(params, 'functionalNodeSize', 0.005, 0.05, 0.001).name('Functional node size').onChange(() => {
-    // Rebuild functional overlay quickly.
-    buildFunctionalDMN()
-  })
+  // (functional controls moved to "Functional networks" folder)
   layerFolder.add(params, 'bundleWidth', 0.5, 8, 0.1).name('Width (px)').onChange(() => {
     params.applyDataTag()
   })
