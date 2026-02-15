@@ -202,6 +202,12 @@ function main() {
 
   const bundleObjects = new Map<string, THREE.Object3D>()
 
+  // Functional overlays (start with a clean, self-contained DMN "node+edge" overlay).
+  // This is a placeholder for future atlas-based surface overlays.
+  const functionalGroup = new THREE.Group()
+  functionalGroup.name = 'functional'
+  normalizedRoot.add(functionalGroup)
+
   // Hover labels via raycaster
   const raycaster = new THREE.Raycaster()
   const mouse = new THREE.Vector2()
@@ -483,12 +489,20 @@ function main() {
     },
     cutaway: 0.55,
     wireOpacity: 0.12,
+
+    // Structural
     bundlesVisible: true,
     bundleOpacity: 0.75,
     bundleWidth: 2.5,
     glowMode: true,
     structuralMode: 'Wiring' as 'Surface' | 'Wiring' | 'Both',
     enabledBundleIds: new Set<string>(),
+
+    // Functional
+    functionalVisible: true,
+    functionalOpacity: 0.75,
+    functionalNodeSize: 0.018,
+
     figureMode: false,
     exportPng: () => {
       renderer.render(scene, camera)
@@ -506,8 +520,100 @@ function main() {
   dataFolder.add(params, 'frame').name('frame view')
   dataFolder.open()
 
+  function buildFunctionalDMN() {
+    functionalGroup.clear()
+
+    // Approximate MNI-ish coordinates for common DMN hubs (mm).
+    // These are intentionally coarse, meant for visualization.
+    const nodes = [
+      { id: 'mPFC', label: 'mPFC', p: [0, 52, -2] },
+      { id: 'PCC', label: 'PCC/Precuneus', p: [0, -52, 26] },
+      { id: 'LAG', label: 'L Angular', p: [-45, -68, 34] },
+      { id: 'RAG', label: 'R Angular', p: [45, -68, 34] },
+      { id: 'LMTL', label: 'L MTL', p: [-24, -20, -18] },
+      { id: 'RMTL', label: 'R MTL', p: [24, -20, -18] },
+    ]
+
+    // If we have a normalization (anatomyNorm), use the *inverse* of normalizedRoot transform
+    // implicitly by mapping points into normalizedRoot space ourselves.
+    // We can recover it from normalizedRoot: scale is uniform.
+    const s = normalizedRoot.scale.x || 1
+    const t = normalizedRoot.position.clone()
+
+    const color = 0xffb86b
+
+    const sphereMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: params.functionalOpacity,
+    })
+
+    const nodeMeshes: Record<string, THREE.Object3D> = {}
+
+    for (const n of nodes) {
+      const geom = new THREE.SphereGeometry(params.functionalNodeSize, 16, 16)
+      const m = new THREE.Mesh(geom, sphereMat)
+      m.name = `dmn-node:${n.id}`
+      ;(m as any).userData = { label: `DMN: ${n.label}` }
+      // Convert world-mm -> normalizedRoot local by applying: p' = p*s + t
+      m.position.set(n.p[0] * s + t.x, n.p[1] * s + t.y, n.p[2] * s + t.z)
+      functionalGroup.add(m)
+      nodeMeshes[n.id] = m
+    }
+
+    // Edges
+    const edges: Array<[string, string]> = [
+      ['mPFC', 'PCC'],
+      ['PCC', 'LAG'],
+      ['PCC', 'RAG'],
+      ['PCC', 'LMTL'],
+      ['PCC', 'RMTL'],
+    ]
+
+    for (const [a, b] of edges) {
+      const pa = (nodeMeshes[a] as any).position as THREE.Vector3
+      const pb = (nodeMeshes[b] as any).position as THREE.Vector3
+      const obj = makeFunctionalEdge(pa, pb, color)
+      functionalGroup.add(obj)
+    }
+
+    functionalGroup.visible = params.functionalVisible
+  }
+
+  function makeFunctionalEdge(a: THREE.Vector3, b: THREE.Vector3, color: number) {
+    const pts = [a, b]
+    if (params.bundleWidth <= 1.0) {
+      const material = new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity: params.functionalOpacity,
+        blending: THREE.AdditiveBlending,
+      })
+      const geom = new THREE.BufferGeometry().setFromPoints(pts)
+      return new THREE.Line(geom, material)
+    }
+
+    const positions = [a.x, a.y, a.z, b.x, b.y, b.z]
+    const geom = new LineGeometry()
+    geom.setPositions(positions)
+    const mat = new LineMaterial({
+      color,
+      linewidth: Math.max(1.0, params.bundleWidth * 0.6),
+      transparent: true,
+      opacity: params.functionalOpacity,
+      dashed: true,
+      dashSize: 0.2,
+      gapSize: 0.15,
+    } as any)
+    ;(mat as any).blending = THREE.AdditiveBlending
+    ;(mat as any).depthTest = true
+    const line2 = new Line2(geom, mat)
+    line2.computeLineDistances()
+    return line2
+  }
+
   // Kick off initial pack load.
-  params.applyDataTag()
+  params.applyDataTag().then(() => buildFunctionalDMN())
 
   gui.add(params, 'cutaway', 0.1, 1.0, 0.01).onChange((v: number) => {
     brain.scale.x = v
@@ -519,6 +625,9 @@ function main() {
   const layerFolder = gui.addFolder('Layers')
   layerFolder.add(params, 'bundlesVisible').name('Structural').onChange((v: boolean) => {
     bundlesGroup.visible = v
+  })
+  layerFolder.add(params, 'functionalVisible').name('Functional (DMN)').onChange((v: boolean) => {
+    functionalGroup.visible = v
   })
   layerFolder.add(params, 'structuralMode', ['Surface', 'Wiring', 'Both']).name('Structural mode').onChange((v: string) => {
     // Instant toggle: just change visibility of loaded objects.
@@ -536,8 +645,18 @@ function main() {
       dataStatusEl.innerHTML = dataStatusEl.innerHTML.replace(/mode: <b>.*?<\/b>/, `mode: <b>${v}</b>`)
     }
   })
-  layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Opacity').onChange(() => {
+  layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Structural opacity').onChange(() => {
     params.applyDataTag()
+  })
+  layerFolder.add(params, 'functionalOpacity', 0, 1, 0.01).name('Functional opacity').onChange((v: number) => {
+    functionalGroup.traverse((child) => {
+      const mat = (child as any).material
+      if (mat && typeof mat.opacity === 'number') mat.opacity = v
+    })
+  })
+  layerFolder.add(params, 'functionalNodeSize', 0.005, 0.05, 0.001).name('Functional node size').onChange(() => {
+    // Rebuild functional overlay quickly.
+    buildFunctionalDMN()
   })
   layerFolder.add(params, 'bundleWidth', 0.5, 8, 0.1).name('Width (px)').onChange(() => {
     params.applyDataTag()
@@ -563,14 +682,17 @@ function main() {
     camera.updateProjectionMatrix()
 
     // Update resolution for wide line materials.
-    for (const obj of bundleObjects.values()) {
-      obj.traverse((child) => {
+    const updateLineRes = (root: THREE.Object3D) => {
+      root.traverse((child) => {
         const mat = (child as any).material as LineMaterial | undefined
         if (mat && (mat as any).isLineMaterial) {
           mat.resolution.set(w, h)
         }
       })
     }
+
+    for (const obj of bundleObjects.values()) updateLineRes(obj)
+    updateLineRes(functionalGroup)
   }
   new ResizeObserver(onResize).observe(stage)
   onResize()
