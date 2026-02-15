@@ -294,8 +294,11 @@ function main() {
       bundlesGroup.clear()
       bundleObjects.clear()
 
-      const wantSurface = params.structuralMode === 'Surface' || params.structuralMode === 'Both'
-      const wantWiring = params.structuralMode === 'Wiring' || params.structuralMode === 'Both'
+      // Always load both representations (if present) so switching modes is instant.
+      const showSurface = params.structuralMode === 'Surface' || params.structuralMode === 'Both'
+      const showWiring = params.structuralMode === 'Wiring' || params.structuralMode === 'Both'
+      const loadSurface = true
+      const loadWiring = true
 
       const bundleDefs = manifest.assets.bundles ?? []
 
@@ -349,7 +352,7 @@ function main() {
         ;(group as any).userData = { label: b.name }
 
         // Surface (mesh)
-        if (wantSurface) {
+        if (loadSurface) {
           const meshPath = b.meshUrl ?? (b.type === 'mesh' ? b.url : undefined)
           if (meshPath) {
             const url = meshPath.startsWith('http') ? meshPath : makePackUrlNoBust(tag, meshPath)
@@ -373,12 +376,13 @@ function main() {
               })
             })
 
+            obj.visible = showSurface
             group.add(obj)
           }
         }
 
         // Wiring (polyline)
-        if (wantWiring) {
+        if (loadWiring) {
           const wirePath = b.wireUrl
           if (wirePath) {
             const url = wirePath.startsWith('http') ? wirePath : makePackUrl(tag, wirePath)
@@ -389,6 +393,7 @@ function main() {
               // Wires are authored in world-mm. normalizedRoot already applies centering+scale.
               const obj = makeWireObject(pts, color)
               ;(obj as any).userData = { label: b.name }
+              obj.visible = showWiring
               group.add(obj)
             }
           }
@@ -403,17 +408,7 @@ function main() {
       const bundleCount = bundleObjects.size
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
 
-      // Debug size/center after normalization.
-      let dbg = ''
-      const a = normalizedRoot.getObjectByName('anatomy')
-      if (a) {
-        const box = new THREE.Box3().setFromObject(a)
-        const size = new THREE.Vector3(); box.getSize(size)
-        const center = new THREE.Vector3(); box.getCenter(center)
-        dbg = ` • anatomy size: ${size.length().toFixed(2)} center: (${center.x.toFixed(2)},${center.y.toFixed(2)},${center.z.toFixed(2)})`
-      }
-
-      dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • visible bundles: <b>${bundleCount}</b> • mode: <b>${params.structuralMode}</b>${dbg}`
+      dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • visible bundles: <b>${bundleCount}</b> • mode: <b>${params.structuralMode}</b>`
 
       // Legend + per-bundle toggles.
       const items = bundleDefs.map((b) => {
@@ -525,8 +520,21 @@ function main() {
   layerFolder.add(params, 'bundlesVisible').name('Structural').onChange((v: boolean) => {
     bundlesGroup.visible = v
   })
-  layerFolder.add(params, 'structuralMode', ['Surface', 'Wiring', 'Both']).name('Structural mode').onChange(() => {
-    params.applyDataTag()
+  layerFolder.add(params, 'structuralMode', ['Surface', 'Wiring', 'Both']).name('Structural mode').onChange((v: string) => {
+    // Instant toggle: just change visibility of loaded objects.
+    const showSurface = v === 'Surface' || v === 'Both'
+    const showWiring = v === 'Wiring' || v === 'Both'
+    for (const obj of bundleObjects.values()) {
+      obj.traverse((child) => {
+        if (child.name.startsWith('surface:')) child.visible = showSurface
+        else if ((child as any).isLine || (child as any).isLine2) child.visible = showWiring
+      })
+    }
+    // Update status line.
+    const dataStatusEl = document.querySelector<HTMLElement>('#datastatus')
+    if (dataStatusEl) {
+      dataStatusEl.innerHTML = dataStatusEl.innerHTML.replace(/mode: <b>.*?<\/b>/, `mode: <b>${v}</b>`)
+    }
   })
   layerFolder.add(params, 'bundleOpacity', 0, 1, 0.01).name('Opacity').onChange(() => {
     params.applyDataTag()
