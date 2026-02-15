@@ -244,7 +244,6 @@ function main() {
       const manifest = await loadManifest(tag)
 
       let anatomyNorm: Normalization | null = null
-      let anatomyObj: THREE.Object3D | null = null
 
       // Try loading anatomy if provided.
       if (manifest.assets.anatomy?.url) {
@@ -267,7 +266,6 @@ function main() {
 
         anatomyNorm = computeNormalization(obj)
         applyNormalization(obj, anatomyNorm)
-        anatomyObj = obj
 
         // Ensure anatomy is visible (Pandora surface comes in without useful materials).
         obj.traverse((child) => {
@@ -276,11 +274,11 @@ function main() {
           mesh.material = new THREE.MeshStandardMaterial({
             color: 0x162234,
             transparent: true,
-            opacity: 0.18,
+            opacity: 0.35,
             roughness: 1,
             metalness: 0,
             emissive: new THREE.Color(0x0b1626),
-            emissiveIntensity: 0.6,
+            emissiveIntensity: 0.9,
           })
         })
       }
@@ -423,25 +421,13 @@ function main() {
         params.applyDataTag()
       }
 
-      // Frame camera.
-      // For Wiring mode, frame to anatomy only (Line2 bounds can be flaky and cause tiny/off-center framing).
+      // Deterministic view: keep content centered at origin after normalization.
+      // (Bounding-box framing can be unreliable with Line2 wiring geometry.)
       {
-        const box = new THREE.Box3()
-        if (anatomyObj) box.expandByObject(anatomyObj)
-        if (wantSurface) box.expandByObject(bundlesGroup)
-
-        const size = new THREE.Vector3()
-        box.getSize(size)
-        const center = new THREE.Vector3()
-        box.getCenter(center)
-
-        const maxDim = Math.max(size.x, size.y, size.z)
-        const dist = maxDim > 0 ? maxDim * 2.2 : 2.2
-
-        controls.target.copy(center)
-        camera.position.copy(center.clone().add(new THREE.Vector3(dist, dist * 0.22, dist * 0.85)))
-        camera.near = Math.max(0.001, dist / 200)
-        camera.far = Math.max(10, dist * 80)
+        controls.target.set(0, 0, 0)
+        camera.position.set(0.0, 0.15, 2.2)
+        camera.near = 0.001
+        camera.far = 200
         camera.updateProjectionMatrix()
         controls.update()
       }
@@ -466,6 +452,22 @@ function main() {
       DATA_TAG = params.dataTag
       await applyDataPack(DATA_TAG)
     },
+    frame: () => {
+      // Frame to anatomy+bundles using standard box bounds.
+      const box = new THREE.Box3().setFromObject(brainGroup)
+      const size = new THREE.Vector3()
+      box.getSize(size)
+      const center = new THREE.Vector3()
+      box.getCenter(center)
+      const maxDim = Math.max(size.x, size.y, size.z)
+      const dist = maxDim > 0 ? maxDim * 2.2 : 2.2
+      controls.target.copy(center)
+      camera.position.copy(center.clone().add(new THREE.Vector3(dist, dist * 0.2, dist)))
+      camera.near = Math.max(0.001, dist / 200)
+      camera.far = Math.max(10, dist * 80)
+      camera.updateProjectionMatrix()
+      controls.update()
+    },
     cutaway: 0.55,
     wireOpacity: 0.12,
     bundlesVisible: true,
@@ -488,6 +490,7 @@ function main() {
   const dataFolder = gui.addFolder('Data pack')
   dataFolder.add(params, 'dataTag').name('pack tag')
   dataFolder.add(params, 'applyDataTag').name('load')
+  dataFolder.add(params, 'frame').name('frame view')
   dataFolder.open()
 
   // Kick off initial pack load.
