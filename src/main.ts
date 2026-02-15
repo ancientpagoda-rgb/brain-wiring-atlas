@@ -500,6 +500,7 @@ function main() {
     // Functional
     functionalOpacity: 0.75,
     functionalNodeSize: 0.018,
+    dmnSizeBoost: 1.6,
     netDMN: true,
     netSalience: false,
     netDorsalAttention: false,
@@ -638,7 +639,8 @@ function main() {
 
       const nodeMeshes: Record<string, THREE.Mesh> = {}
       for (const n of net.nodes) {
-        const geom = new THREE.SphereGeometry(params.functionalNodeSize, 16, 16)
+        const size = net.id === 'DMN' ? params.functionalNodeSize * params.dmnSizeBoost : params.functionalNodeSize
+        const geom = new THREE.SphereGeometry(size, 16, 16)
         const m = new THREE.Mesh(geom, sphereMat)
         m.name = `netnode:${net.id}:${n.id}`
         ;(m as any).userData = { label: `${net.name}: ${n.label}` }
@@ -719,6 +721,7 @@ function main() {
   funcFolder.add(params, 'netSomatomotor').name('Somatomotor').onChange(() => buildFunctionalNetworks())
   funcFolder.add(params, 'functionalOpacity', 0, 1, 0.01).name('Opacity').onChange(() => buildFunctionalNetworks())
   funcFolder.add(params, 'functionalNodeSize', 0.005, 0.05, 0.001).name('Node size').onChange(() => buildFunctionalNetworks())
+  funcFolder.add(params, 'dmnSizeBoost', 1.0, 3.0, 0.1).name('DMN size boost').onChange(() => buildFunctionalNetworks())
   funcFolder.open()
   layerFolder.add(params, 'structuralMode', ['Surface', 'Wiring', 'Both']).name('Structural mode').onChange((v: string) => {
     // Instant toggle: just change visibility of loaded objects.
