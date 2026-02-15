@@ -76,15 +76,6 @@ function computeNormalization(obj: THREE.Object3D): Normalization {
   return { center, scale }
 }
 
-function applyNormalization(obj: THREE.Object3D, norm: Normalization) {
-  obj.traverse((child) => {
-    ;(child as any).frustumCulled = false
-  })
-  obj.position.sub(norm.center)
-  obj.scale.multiplyScalar(norm.scale)
-  obj.updateMatrixWorld(true)
-}
-
 function parseHexColor(hex: string, fallback = 0x8bd3ff) {
   const h = hex.trim().replace('#', '')
   if (h.length === 6) return parseInt(h, 16)
@@ -171,6 +162,12 @@ function main() {
   const brainGroup = new THREE.Group()
   scene.add(brainGroup)
 
+  // Everything data-driven lives under normalizedRoot, which gets centered+scaled once
+  // based on anatomy bounds. This guarantees Surface/Wiring share identical transforms.
+  const normalizedRoot = new THREE.Group()
+  normalizedRoot.name = 'normalizedRoot'
+  brainGroup.add(normalizedRoot)
+
   // Placeholder "hemisphere cutaway" brain shell (until real anatomy GLB arrives).
   // A clipped sphere + subtle wire overlay for that diagram look.
 
@@ -201,7 +198,7 @@ function main() {
   // Structural bundles container (loaded from pack)
   const bundlesGroup = new THREE.Group()
   bundlesGroup.name = 'bundles'
-  brainGroup.add(bundlesGroup)
+  normalizedRoot.add(bundlesGroup)
 
   const bundleObjects = new Map<string, THREE.Object3D>()
 
@@ -260,12 +257,20 @@ function main() {
         if (placeholderBrain) placeholderBrain.visible = false
         if (placeholderWire) placeholderWire.visible = false
 
-        const old = brainGroup.getObjectByName('anatomy')
-        if (old) brainGroup.remove(old)
-        brainGroup.add(obj)
+        const old = normalizedRoot.getObjectByName('anatomy')
+        if (old) normalizedRoot.remove(old)
+        normalizedRoot.add(obj)
 
         anatomyNorm = computeNormalization(obj)
-        applyNormalization(obj, anatomyNorm)
+
+        // Reset normalization transform on root, then apply it once (center+scale).
+        normalizedRoot.position.set(0, 0, 0)
+        normalizedRoot.scale.set(1, 1, 1)
+        normalizedRoot.updateMatrixWorld(true)
+
+        normalizedRoot.position.sub(anatomyNorm.center)
+        normalizedRoot.scale.multiplyScalar(anatomyNorm.scale)
+        normalizedRoot.updateMatrixWorld(true)
 
         // Ensure anatomy is visible (Pandora surface comes in without useful materials).
         obj.traverse((child) => {
@@ -350,7 +355,7 @@ function main() {
             obj.name = `surface:${b.id}`
             ;(obj as any).userData = { label: b.name }
 
-            if (anatomyNorm) applyNormalization(obj, anatomyNorm)
+            // No per-object normalization; normalizedRoot already handles centering+scale.
 
             obj.traverse((child) => {
               const mesh = child as THREE.Mesh
@@ -379,6 +384,7 @@ function main() {
 
             for (const line of data.lines) {
               let pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
+              // Wires are authored in world-mm. Convert to normalizedRoot space by applying (p - center) * scale.
               if (anatomyNorm) pts = pts.map((p) => p.sub(anatomyNorm!.center).multiplyScalar(anatomyNorm!.scale))
               const obj = makeWireObject(pts, color)
               ;(obj as any).userData = { label: b.name }
@@ -398,7 +404,7 @@ function main() {
 
       // Debug size/center after normalization.
       let dbg = ''
-      const a = brainGroup.getObjectByName('anatomy')
+      const a = normalizedRoot.getObjectByName('anatomy')
       if (a) {
         const box = new THREE.Box3().setFromObject(a)
         const size = new THREE.Vector3(); box.getSize(size)
