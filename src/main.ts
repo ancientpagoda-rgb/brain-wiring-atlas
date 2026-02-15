@@ -144,7 +144,7 @@ function main() {
   controls.enableDamping = true
   controls.dampingFactor = 0.06
   controls.target.set(0.0, 0.05, 0.0)
-  controls.minDistance = 0.05
+  controls.minDistance = 0.01
   controls.maxDistance = 50
 
   // Lighting (moody)
@@ -395,7 +395,18 @@ function main() {
 
       const bundleCount = bundleObjects.size
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
-      dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • visible bundles: <b>${bundleCount}</b> • mode: <b>${params.structuralMode}</b>`
+
+      // Debug size/center after normalization.
+      let dbg = ''
+      const a = brainGroup.getObjectByName('anatomy')
+      if (a) {
+        const box = new THREE.Box3().setFromObject(a)
+        const size = new THREE.Vector3(); box.getSize(size)
+        const center = new THREE.Vector3(); box.getCenter(center)
+        dbg = ` • anatomy size: ${size.length().toFixed(2)} center: (${center.x.toFixed(2)},${center.y.toFixed(2)},${center.z.toFixed(2)})`
+      }
+
+      dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • visible bundles: <b>${bundleCount}</b> • mode: <b>${params.structuralMode}</b>${dbg}`
 
       // Legend + per-bundle toggles.
       const items = bundleDefs.map((b) => {
@@ -425,7 +436,7 @@ function main() {
       // (Bounding-box framing can be unreliable with Line2 wiring geometry.)
       {
         controls.target.set(0, 0, 0)
-        camera.position.set(0.0, 0.15, 2.2)
+        camera.position.set(0.0, 0.12, 1.2)
         camera.near = 0.001
         camera.far = 200
         camera.updateProjectionMatrix()
