@@ -268,8 +268,10 @@ function main() {
         normalizedRoot.scale.set(1, 1, 1)
         normalizedRoot.updateMatrixWorld(true)
 
-        normalizedRoot.position.sub(anatomyNorm.center)
-        normalizedRoot.scale.multiplyScalar(anatomyNorm.scale)
+        // Apply normalization to the *root* in a translation-safe way.
+        // Note: scaling does NOT scale Object3D.position, so we must scale the translation ourselves.
+        normalizedRoot.scale.setScalar(anatomyNorm.scale)
+        normalizedRoot.position.copy(anatomyNorm.center).multiplyScalar(-anatomyNorm.scale)
         normalizedRoot.updateMatrixWorld(true)
 
         // Ensure anatomy is visible (Pandora surface comes in without useful materials).
@@ -384,8 +386,7 @@ function main() {
 
             for (const line of data.lines) {
               let pts = line.map((p) => new THREE.Vector3(p[0], p[1], p[2]))
-              // Wires are authored in world-mm. Convert to normalizedRoot space by applying (p - center) * scale.
-              if (anatomyNorm) pts = pts.map((p) => p.sub(anatomyNorm!.center).multiplyScalar(anatomyNorm!.scale))
+              // Wires are authored in world-mm. normalizedRoot already applies centering+scale.
               const obj = makeWireObject(pts, color)
               ;(obj as any).userData = { label: b.name }
               group.add(obj)
