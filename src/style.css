@@ -20,6 +20,7 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: 16px;
   padding: 10px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
   background: rgba(5,6,10,0.75);
@@ -76,4 +77,34 @@ header {
   pointer-events: none;
   white-space: nowrap;
   display: none;
+}
+
+.lil-gui {
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+}
+
+@media (max-width: 700px) {
+  header {
+    align-items: flex-start;
+  }
+
+  .brand {
+    max-width: 11ch;
+    line-height: 1.15;
+  }
+
+  .hint {
+    display: none;
+  }
+
+  .legend {
+    right: 12px;
+    max-width: calc(100% - 24px);
+    font-size: 11px;
+  }
+
+  .lil-gui {
+    display: none !important;
+  }
 }

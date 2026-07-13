@@ -856,6 +856,7 @@ function main() {
     gui.domElement.style.display = v ? 'none' : 'block'
   })
   figureFolder.add(params, 'exportPng').name('Export PNG')
+  gui.close()
 
   const onResize = () => {
     const w = stage.clientWidth
