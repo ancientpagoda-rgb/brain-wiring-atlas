@@ -307,8 +307,8 @@ function main() {
       // Always load both representations (if present) so switching modes is instant.
       const showSurface = params.structuralMode === 'Surface' || params.structuralMode === 'Both'
       const showWiring = params.structuralMode === 'Wiring' || params.structuralMode === 'Both'
-      const loadSurface = true
-      const loadWiring = true
+      const loadSurface = showSurface
+      const loadWiring = showWiring
 
       const bundleDefs = manifest.assets.bundles ?? []
 
@@ -353,7 +353,10 @@ function main() {
         return line2
       }
 
+      let loadedBundleIndex = 0
       for (const b of bundleDefs) {
+        loadedBundleIndex += 1
+        dataStatusEl.textContent = `Loading bundles ${loadedBundleIndex}/${bundleDefs.length}…`
         if (!params.enabledBundleIds.has(b.id)) continue
 
         const color = parseHexColor(b.color ?? '#8bd3ff')
