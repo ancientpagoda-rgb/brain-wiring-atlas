@@ -106,10 +106,13 @@ function main() {
       <div class="tooltip" id="tooltip"></div>
       <div class="legend" id="legend">
         <b>Legend</b><br/>
-        <span style="color:#8bd3ff">Structural</span>: tract bundles (atlas-derived) <br/>
-        <span style="color:#ffb86b">Functional</span>: networks/edges (RSNs / connectome overlays)
+        <span style="color:#8bd3ff">Structural</span>: Pandora/TractSeg atlas tracts <br/>
+        <span style="color:#ffb86b">Functional</span>: schematic MNI seed networks <br/>
+        <span style="color:#b06cff">Dopamine</span>: schematic pathway overlay
         <div style="margin-top:8px; opacity:0.85">Data pack: <code id="datatag">${DATA_TAG}</code></div>
         <div id="datastatus" style="margin-top:6px; opacity:0.85"></div>
+        <div id="datanotes" style="margin-top:6px; opacity:0.78"></div>
+        <div id="datacitation" style="margin-top:6px; opacity:0.68"></div>
         <div id="bundlelegend" style="margin-top:8px"></div>
       </div>
     </div>
@@ -119,6 +122,8 @@ function main() {
   const tooltip = document.querySelector<HTMLDivElement>('#tooltip')!
   const dataTagEl = document.querySelector<HTMLElement>('#datatag')!
   const dataStatusEl = document.querySelector<HTMLElement>('#datastatus')!
+  const dataNotesEl = document.querySelector<HTMLElement>('#datanotes')!
+  const dataCitationEl = document.querySelector<HTMLElement>('#datacitation')!
   const bundleLegendEl = document.querySelector<HTMLElement>('#bundlelegend')!
 
   const scene = new THREE.Scene()
@@ -307,8 +312,8 @@ function main() {
       // Always load both representations (if present) so switching modes is instant.
       const showSurface = params.structuralMode === 'Surface' || params.structuralMode === 'Both'
       const showWiring = params.structuralMode === 'Wiring' || params.structuralMode === 'Both'
-      const loadSurface = showSurface
-      const loadWiring = showWiring
+      const loadSurface = true
+      const loadWiring = true
 
       const bundleDefs = manifest.assets.bundles ?? []
 
@@ -422,6 +427,8 @@ function main() {
       const anatomyStatus = manifest.assets.anatomy?.url ? (manifest.assets.anatomy.name ?? 'anatomy') : '(no anatomy)'
 
       dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • visible bundles: <b>${bundleCount}</b> • mode: <b>${params.structuralMode}</b>`
+      dataNotesEl.textContent = manifest.notes ? `Pack notes: ${manifest.notes}` : ''
+      dataCitationEl.textContent = manifest.citation ? `Source: ${manifest.citation}` : ''
 
       // Legend + per-bundle toggles.
       const items = bundleDefs.map((b) => {
