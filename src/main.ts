@@ -13,6 +13,7 @@ import {
   type AtlasSource,
   type LoadedAtlas,
 } from './reference-lens'
+import { startGrowthPrototype } from './growth-prototype'
 
 // Data pack tag hosted under /public/packs/<tag>/...
 let DATA_TAG = 'v0.9'
@@ -109,6 +110,12 @@ async function loadBundleJson(url: string): Promise<BundleJson> {
 }
 
 function main() {
+  const mode = new URLSearchParams(window.location.search).get('mode') ?? 'growth'
+  if (mode !== 'atlas') {
+    startGrowthPrototype()
+    return
+  }
+
   const app = document.querySelector<HTMLDivElement>('#app')!
   app.innerHTML = `
     <header hidden>

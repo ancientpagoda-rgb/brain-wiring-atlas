@@ -41,6 +41,22 @@ header {
   font-size: 12px;
 }
 
+header.growth-header {
+  align-items: center;
+}
+
+.growth-phase {
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(141, 201, 255, 0.16);
+  background: rgba(12, 16, 26, 0.82);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  backdrop-filter: blur(10px);
+}
+
 #stage {
   position: relative;
   flex: 1;
@@ -273,6 +289,116 @@ header {
   display: none;
 }
 
+.growth-dock {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 3;
+  width: min(380px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(126, 214, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(8, 13, 24, 0.86), rgba(5, 7, 12, 0.74)),
+    rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(18px);
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255,255,255,0.03) inset;
+}
+
+.growth-dock-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.growth-kicker {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: rgba(141, 201, 255, 0.76);
+}
+
+.growth-title {
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 680;
+  letter-spacing: 0.2px;
+}
+
+.growth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.growth-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.growth-preset {
+  padding-inline: 11px;
+}
+
+.gene {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.74);
+}
+
+.gene-label {
+  color: rgba(255,255,255,0.76);
+}
+
+.gene-row,
+.seed-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.growth-dock input[type="range"] {
+  width: 100%;
+  accent-color: #8bd3ff;
+}
+
+.growth-dock input[type="number"] {
+  min-width: 0;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(8, 12, 20, 0.84);
+  color: rgba(255,255,255,0.92);
+  font: inherit;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.gene-value {
+  min-width: 3.4ch;
+  text-align: right;
+  font-size: 11px;
+  color: rgba(255,255,255,0.72);
+}
+
+.growth-note {
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255,255,255,0.7);
+}
+
 .lil-gui {
   max-height: calc(100vh - 16px);
   overflow: auto;
@@ -321,5 +447,17 @@ header {
 
   .lil-gui {
     display: none !important;
+  }
+
+  .growth-dock {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    max-height: 44vh;
+  }
+
+  .growth-actions {
+    justify-content: flex-start;
   }
 }
