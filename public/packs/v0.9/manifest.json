@@ -1,7 +1,39 @@
 {
   "version": "v0.9",
-  "notes": "Full brain (LH+RH) anatomy + bilateral tract surfaces and wiring, derived from Pandora TractSeg atlas.",
+  "notes": "Full brain (LH+RH) anatomy + bilateral tract surfaces and wiring, derived from Pandora TractSeg atlas. The reference lens adds HCPex, XTRACT, and Tian subcortex comparison volumes.",
   "citation": "MASILab/Pandora-WhiteMatterAtlas (CC-BY-4.0). Preprint: https://www.biorxiv.org/content/10.1101/2020.06.12.148999v1.full",
+  "sources": [
+    {
+      "name": "Pandora-WhiteMatterAtlas",
+      "contribution": "Template anatomy plus the bilateral tract meshes and centerlines used in the 3D viewer.",
+      "citation": "MASILab/Pandora-WhiteMatterAtlas (CC-BY-4.0)"
+    },
+    {
+      "name": "XTRACT_atlases",
+      "contribution": "Binary tract masks used by the reference lens for tract footprint comparison.",
+      "citation": "SPMIC-UoN/XTRACT_atlases"
+    },
+    {
+      "name": "HCPex",
+      "contribution": "Fine-grained cortical parcellation labels rendered in the reference lens.",
+      "citation": "wayalan/HCPex"
+    },
+    {
+      "name": "Tian subcortex",
+      "contribution": "Hierarchical subcortical labels rendered in the reference lens.",
+      "citation": "yetianmed/subcortex"
+    },
+    {
+      "name": "probconnatlas",
+      "contribution": "Probabilistic connectivity thinking that informed the slice threshold and opacity controls.",
+      "citation": "connectomicslab/probconnatlas"
+    },
+    {
+      "name": "Connectome Mapper 3",
+      "contribution": "Subject-specific pipeline reference for future pack generation.",
+      "citation": "connectomicslab/connectomemapper3"
+    }
+  ],
   "assets": {
     "anatomy": {
       "name": "Pandora TractSeg LH+RH surface (template)",

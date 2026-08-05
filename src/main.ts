@@ -7,6 +7,12 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import GUI from 'lil-gui'
+import {
+  loadAtlasSource,
+  renderAtlasSlice,
+  type AtlasSource,
+  type LoadedAtlas,
+} from './reference-lens'
 
 // Data pack tag hosted under /public/packs/<tag>/...
 let DATA_TAG = 'v0.9'
@@ -15,6 +21,11 @@ type Manifest = {
   version: string
   citation?: string
   notes?: string
+  sources?: Array<{
+    name: string
+    contribution: string
+    citation?: string
+  }>
   assets: {
     anatomy?: { url: string; name?: string }
     bundles?: Array<{
@@ -30,6 +41,8 @@ type Manifest = {
     }>
   }
 }
+
+const referenceUrl = (path: string) => `${import.meta.env.BASE_URL}reference/${path}`
 
 // NOTE: GitHub Releases asset URLs do not reliably send CORS headers for browser fetch/XHR.
 // So we host packs under the site itself (public/packs/<tag>/...) and still ALSO upload
@@ -98,33 +111,280 @@ async function loadBundleJson(url: string): Promise<BundleJson> {
 function main() {
   const app = document.querySelector<HTMLDivElement>('#app')!
   app.innerHTML = `
-    <header>
+    <header hidden>
       <div class="brand">Brain Wiring Atlas</div>
-      <div class="hint">Free explore • Drag to orbit • Scroll to zoom • Hover for labels</div>
+      <div class="hint">Drag • zoom • hover</div>
     </header>
     <div id="stage">
       <div class="tooltip" id="tooltip"></div>
-      <div class="legend" id="legend">
-        <b>Legend</b><br/>
-        <span style="color:#8bd3ff">Structural</span>: Pandora/TractSeg atlas tracts <br/>
-        <span style="color:#ffb86b">Functional</span>: schematic MNI seed networks <br/>
-        <span style="color:#b06cff">Dopamine</span>: schematic pathway overlay
-        <div style="margin-top:8px; opacity:0.85">Data pack: <code id="datatag">${DATA_TAG}</code></div>
-        <div id="datastatus" style="margin-top:6px; opacity:0.85"></div>
-        <div id="datanotes" style="margin-top:6px; opacity:0.78"></div>
-        <div id="datacitation" style="margin-top:6px; opacity:0.68"></div>
-        <div id="bundlelegend" style="margin-top:8px"></div>
+      <div class="chrome" hidden>
+        <button type="button" class="chrome-btn" id="referencebutton">Reference</button>
+        <button type="button" class="chrome-btn chrome-btn-secondary" id="advancedbutton">More</button>
+      </div>
+      <div class="legend" id="legend" hidden>
+        <b>View</b><br/>
+        <span style="color:#8bd3ff">Structural</span><br/>
+        <span style="color:#ffb86b">Functional</span><br/>
+        <span style="color:#b06cff">Reference</span>
+      </div>
+      <div hidden id="hiddenstatus">
+        <div id="datatag">${DATA_TAG}</div>
+        <div id="datastatus"></div>
+        <div id="datanotes"></div>
+        <div id="datacitation"></div>
+        <div class="sourcefacts" id="sourcefacts"></div>
+        <div id="bundlelegend"></div>
+      </div>
+      <div class="detail-dock" id="detaildock" hidden>
+        <div class="detail-header">
+          <div class="detail-title">Reference</div>
+          <button type="button" class="chrome-btn chrome-btn-secondary" id="detailtoggle">Hide</button>
+        </div>
+        <div class="detail-controls">
+          <label>
+            Source
+            <select id="detailsource" aria-label="Reference source"></select>
+          </label>
+          <label>
+            Slice
+            <div class="slider-row">
+              <input id="detailslice" type="range" min="0" max="1000" step="1" value="500" />
+              <span id="detailslicevalue">0.50</span>
+            </div>
+          </label>
+          <label id="detailthresholdwrap" class="detail-advanced">
+            Threshold
+            <div class="slider-row">
+              <input id="detailthreshold" type="range" min="0" max="1000" step="1" value="220" />
+              <span id="detailthresholdvalue">0.22</span>
+            </div>
+          </label>
+        </div>
+        <canvas id="detailcanvas"></canvas>
+        <div class="detail-status" id="detailstatus">Loading reference sources…</div>
+        <div class="detail-meta" id="detailmeta"></div>
       </div>
     </div>
   `
 
   const stage = document.querySelector<HTMLDivElement>('#stage')!
+  const headerEl = document.querySelector<HTMLElement>('header')!
   const tooltip = document.querySelector<HTMLDivElement>('#tooltip')!
+  const chromeEl = document.querySelector<HTMLDivElement>('.chrome')!
   const dataTagEl = document.querySelector<HTMLElement>('#datatag')!
   const dataStatusEl = document.querySelector<HTMLElement>('#datastatus')!
   const dataNotesEl = document.querySelector<HTMLElement>('#datanotes')!
   const dataCitationEl = document.querySelector<HTMLElement>('#datacitation')!
+  const sourceFactsEl = document.querySelector<HTMLElement>('#sourcefacts')!
   const bundleLegendEl = document.querySelector<HTMLElement>('#bundlelegend')!
+  const legendEl = document.querySelector<HTMLElement>('#legend')!
+  const detailDockEl = document.querySelector<HTMLDivElement>('#detaildock')!
+  const referenceButtonEl = document.querySelector<HTMLButtonElement>('#referencebutton')!
+  const advancedButtonEl = document.querySelector<HTMLButtonElement>('#advancedbutton')!
+  const detailToggleEl = document.querySelector<HTMLButtonElement>('#detailtoggle')!
+  const detailSourceEl = document.querySelector<HTMLSelectElement>('#detailsource')!
+  const detailSliceEl = document.querySelector<HTMLInputElement>('#detailslice')!
+  const detailSliceValueEl = document.querySelector<HTMLElement>('#detailslicevalue')!
+  const detailThresholdWrapEl = document.querySelector<HTMLLabelElement>('#detailthresholdwrap')!
+  const detailThresholdEl = document.querySelector<HTMLInputElement>('#detailthreshold')!
+  const detailThresholdValueEl = document.querySelector<HTMLElement>('#detailthresholdvalue')!
+  const detailCanvas = document.querySelector<HTMLCanvasElement>('#detailcanvas')!
+  const detailStatusEl = document.querySelector<HTMLElement>('#detailstatus')!
+  const detailMetaEl = document.querySelector<HTMLElement>('#detailmeta')!
+
+  const DETAIL_SOURCES: AtlasSource[] = [
+    {
+      id: 'hcpex',
+      family: 'HCPex',
+      name: 'HCPex cortical parcellation',
+      summary: 'Fine-grained cortical labels.',
+      citation: 'wayalan/HCPex',
+      volumeUrl: referenceUrl('hcpex/HCPex.nii.gz'),
+      labelTableUrl: referenceUrl('hcpex/HCPex_LookUpTable.txt'),
+      kind: 'labels',
+      defaultAxis: 2,
+      defaultSliceRatio: 0.52,
+      accentColor: '#6dc7ff',
+    },
+    {
+      id: 'xtract-af-l',
+      family: 'XTRACT',
+      name: 'Arcuate fasciculus (L)',
+      summary: 'Left arcuate fasciculus mask.',
+      citation: 'SPMIC-UoN/XTRACT_atlases',
+      volumeUrl: referenceUrl('xtract/af_l.nii.gz'),
+      kind: 'mask',
+      defaultAxis: 2,
+      defaultSliceRatio: 0.56,
+      accentColor: '#8bd3ff',
+    },
+    {
+      id: 'xtract-atr-l',
+      family: 'XTRACT',
+      name: 'Anterior thalamic radiation (L)',
+      summary: 'Left anterior thalamic radiation mask.',
+      citation: 'SPMIC-UoN/XTRACT_atlases',
+      volumeUrl: referenceUrl('xtract/atr_l.nii.gz'),
+      kind: 'mask',
+      defaultAxis: 2,
+      defaultSliceRatio: 0.52,
+      accentColor: '#9ad8ff',
+    },
+    {
+      id: 'xtract-cst-l',
+      family: 'XTRACT',
+      name: 'Corticospinal tract (L)',
+      summary: 'Left corticospinal tract mask.',
+      citation: 'SPMIC-UoN/XTRACT_atlases',
+      volumeUrl: referenceUrl('xtract/cst_l.nii.gz'),
+      kind: 'mask',
+      defaultAxis: 2,
+      defaultSliceRatio: 0.5,
+      accentColor: '#7fffd4',
+    },
+    {
+      id: 'xtract-mdlf-l',
+      family: 'XTRACT',
+      name: 'MDLF (L)',
+      summary: 'Left middle longitudinal fasciculus mask.',
+      citation: 'SPMIC-UoN/XTRACT_atlases',
+      volumeUrl: referenceUrl('xtract/mdlf_l.nii.gz'),
+      kind: 'mask',
+      defaultAxis: 2,
+      defaultSliceRatio: 0.5,
+      accentColor: '#c4b5ff',
+    },
+    {
+      id: 'xtract-mcp',
+      family: 'XTRACT',
+      name: 'Middle cerebellar peduncle',
+      summary: 'Middle cerebellar peduncle mask.',
+      citation: 'SPMIC-UoN/XTRACT_atlases',
+      volumeUrl: referenceUrl('xtract/mcp.nii.gz'),
+      kind: 'mask',
+      defaultAxis: 2,
+      defaultSliceRatio: 0.46,
+      accentColor: '#ffb86b',
+    },
+    {
+      id: 'subcortex-s4',
+      family: 'Tian subcortex',
+      name: 'Subcortex S4 (3T)',
+      summary: 'Finer deep nuclei labels.',
+      citation: 'yetianmed/subcortex',
+      volumeUrl: referenceUrl('subcortex/Tian_Subcortex_S4_3T_1mm.nii.gz'),
+      labelTableUrl: referenceUrl('subcortex/Tian_Subcortex_S4_3T_label.txt'),
+      kind: 'labels',
+      defaultAxis: 2,
+      defaultSliceRatio: 0.5,
+      accentColor: '#ffb86b',
+    },
+  ]
+
+  const detailSourceById = new Map(DETAIL_SOURCES.map((source) => [source.id, source] as const))
+  const detailAtlasCache = new Map<string, Promise<LoadedAtlas>>()
+  const detailState = {
+    sourceId: DETAIL_SOURCES[0].id,
+    sliceRatio: DETAIL_SOURCES[0].defaultSliceRatio,
+    threshold: 0.22,
+    atlas: null as LoadedAtlas | null,
+    loading: false,
+    requestId: 0,
+  }
+
+  for (const source of DETAIL_SOURCES) {
+    const option = document.createElement('option')
+    option.value = source.id
+    option.textContent = `${source.family}: ${source.name}`
+    detailSourceEl.appendChild(option)
+  }
+
+  const syncDetailControls = () => {
+    detailSourceEl.value = detailState.sourceId
+    detailSliceEl.value = String(Math.round(detailState.sliceRatio * 1000))
+    detailSliceValueEl.textContent = detailState.sliceRatio.toFixed(2)
+    detailThresholdEl.value = String(Math.round(detailState.threshold * 1000))
+    detailThresholdValueEl.textContent = detailState.threshold.toFixed(2)
+
+    const source = detailSourceById.get(detailState.sourceId)
+    detailThresholdWrapEl.hidden = source?.kind !== 'mask'
+  }
+
+  const syncDetailCanvasSize = () => {
+    const rect = detailCanvas.getBoundingClientRect()
+    const dpr = Math.min(window.devicePixelRatio || 1, 2)
+    const width = Math.max(180, Math.round(rect.width * dpr))
+    const height = Math.max(180, Math.round(rect.height * dpr))
+    if (detailCanvas.width !== width) detailCanvas.width = width
+    if (detailCanvas.height !== height) detailCanvas.height = height
+  }
+
+  const renderDetailAtlas = () => {
+    if (!detailState.atlas) return
+    syncDetailCanvasSize()
+    const axis = detailState.atlas.source.defaultAxis
+    const summary = renderAtlasSlice(detailCanvas, detailState.atlas, axis, detailState.sliceRatio, detailState.threshold)
+    const source = detailState.atlas.source
+    const sliceCount = axis === 0 ? detailState.atlas.dims[0] : axis === 1 ? detailState.atlas.dims[1] : detailState.atlas.dims[2]
+
+    detailStatusEl.innerHTML = `<b>${source.family}</b> · slice ${summary.sliceIndex + 1}/${sliceCount}`
+    detailMetaEl.textContent = source.summary
+  }
+
+  const loadDetailAtlas = async (sourceId: string) => {
+    const source = detailSourceById.get(sourceId) ?? DETAIL_SOURCES[0]
+    detailState.loading = true
+    detailStatusEl.textContent = `Loading ${source.family}…`
+    detailMetaEl.textContent = source.summary
+    const requestId = ++detailState.requestId
+
+    try {
+      let atlasPromise = detailAtlasCache.get(source.id)
+      if (!atlasPromise) {
+        atlasPromise = loadAtlasSource(source)
+        detailAtlasCache.set(source.id, atlasPromise)
+      }
+
+      const atlas = await atlasPromise
+      if (requestId !== detailState.requestId) return
+
+      detailState.atlas = atlas
+      detailState.loading = false
+      syncDetailControls()
+      renderDetailAtlas()
+    } catch (error) {
+      if (requestId !== detailState.requestId) return
+      const message = error instanceof Error ? error.message : String(error)
+      detailState.loading = false
+      detailStatusEl.textContent = `Reference load failed: ${message}`
+      detailMetaEl.textContent = source.summary
+    }
+  }
+
+  const setDetailSource = (sourceId: string) => {
+    const source = detailSourceById.get(sourceId) ?? DETAIL_SOURCES[0]
+    detailState.sourceId = source.id
+    detailState.sliceRatio = source.defaultSliceRatio
+    detailState.threshold = 0.22
+    syncDetailControls()
+    void loadDetailAtlas(source.id)
+  }
+
+  detailSourceEl.addEventListener('change', () => {
+    setDetailSource(detailSourceEl.value)
+  })
+
+  detailSliceEl.addEventListener('input', () => {
+    detailState.sliceRatio = Number(detailSliceEl.value) / 1000
+    detailSliceValueEl.textContent = detailState.sliceRatio.toFixed(2)
+    if (detailState.atlas) renderDetailAtlas()
+  })
+
+  detailThresholdEl.addEventListener('input', () => {
+    detailState.threshold = Number(detailThresholdEl.value) / 1000
+    detailThresholdValueEl.textContent = detailState.threshold.toFixed(2)
+    if (detailState.atlas) renderDetailAtlas()
+  })
 
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#05060a')
@@ -429,6 +689,20 @@ function main() {
       dataStatusEl.innerHTML = `Loaded: <b>${anatomyStatus}</b> • visible bundles: <b>${bundleCount}</b> • mode: <b>${params.structuralMode}</b>`
       dataNotesEl.textContent = manifest.notes ? `Pack notes: ${manifest.notes}` : ''
       dataCitationEl.textContent = manifest.citation ? `Source: ${manifest.citation}` : ''
+      sourceFactsEl.innerHTML = manifest.sources?.length
+        ? manifest.sources
+            .map((source) => {
+              const citation = source.citation ? `<span class="sourcefact-citation">${source.citation}</span>` : ''
+              return `
+                <div class="sourcefact">
+                  <strong>${source.name}</strong>
+                  <span>${source.contribution}</span>
+                  ${citation}
+                </div>
+              `
+            })
+            .join('')
+        : '<div class="sourcefact sourcefact-muted">Source mix is summarized in the README and the reference lens.</div>'
 
       // Legend + per-bundle toggles.
       const items = bundleDefs.map((b) => {
@@ -537,6 +811,42 @@ function main() {
   }
 
   const gui = new GUI({ title: 'Atlas' })
+  gui.domElement.hidden = true
+
+  const uiState = {
+    detailOpen: false,
+    advancedOpen: false,
+  }
+
+  const syncUiVisibility = () => {
+    headerEl.hidden = true
+    legendEl.hidden = true
+    chromeEl.hidden = true
+    detailDockEl.hidden = true
+    detailDockEl.dataset.advanced = 'off'
+    gui.domElement.hidden = true
+
+    referenceButtonEl.dataset.active = uiState.detailOpen ? 'on' : 'off'
+    advancedButtonEl.dataset.active = uiState.advancedOpen ? 'on' : 'off'
+    referenceButtonEl.setAttribute('aria-expanded', String(uiState.detailOpen))
+    advancedButtonEl.setAttribute('aria-expanded', String(uiState.advancedOpen))
+  }
+
+  referenceButtonEl.addEventListener('click', () => {
+    uiState.detailOpen = !uiState.detailOpen
+    syncUiVisibility()
+  })
+
+  detailToggleEl.addEventListener('click', () => {
+    uiState.detailOpen = false
+    syncUiVisibility()
+  })
+
+  advancedButtonEl.addEventListener('click', () => {
+    uiState.advancedOpen = !uiState.advancedOpen
+    syncUiVisibility()
+  })
+
   const dataFolder = gui.addFolder('Data pack')
   dataFolder.add(params, 'dataTag').name('pack tag')
   dataFolder.add(params, 'applyDataTag').name('load')
@@ -860,13 +1170,12 @@ function main() {
   layerFolder.open()
 
   const figureFolder = gui.addFolder('Figure')
-  figureFolder.add(params, 'figureMode').name('Figure mode').onChange((v: boolean) => {
-    const legend = document.querySelector<HTMLElement>('#legend')!
-    legend.style.display = v ? 'none' : 'block'
-    gui.domElement.style.display = v ? 'none' : 'block'
+  figureFolder.add(params, 'figureMode').name('Figure mode').onChange(() => {
+    syncUiVisibility()
   })
   figureFolder.add(params, 'exportPng').name('Export PNG')
   gui.close()
+  syncUiVisibility()
 
   const onResize = () => {
     const w = stage.clientWidth
@@ -887,9 +1196,13 @@ function main() {
 
     for (const obj of bundleObjects.values()) updateLineRes(obj)
     updateLineRes(functionalGroup)
+    if (detailState.atlas) {
+      renderDetailAtlas()
+    }
   }
   new ResizeObserver(onResize).observe(stage)
   onResize()
+  setDetailSource(detailState.sourceId)
 
   function frame() {
     controls.update()
