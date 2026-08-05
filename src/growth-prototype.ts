@@ -348,11 +348,16 @@ export function startGrowthPrototype() {
         <div class="brand">Brain Growth</div>
         <div class="hint">Genome-driven morphogenesis prototype</div>
       </div>
-      <div class="growth-phase" id="growthphase">Embryo</div>
+      <div class="growth-header-actions">
+        <div class="growth-phase" id="growthphase">Embryo</div>
+        <button type="button" class="chrome-btn chrome-btn-secondary growth-menu-btn" id="growthtoggle" aria-expanded="false">
+          Menu
+        </button>
+      </div>
     </header>
     <div id="stage">
       <div class="tooltip" id="tooltip"></div>
-      <div class="growth-dock">
+      <div class="growth-dock" id="growthdock" hidden>
         <div class="growth-dock-head">
           <div>
             <div class="growth-kicker">Genome</div>
@@ -394,6 +399,8 @@ export function startGrowthPrototype() {
   const stage = requireElement<HTMLDivElement>('#stage')
   const tooltip = requireElement<HTMLDivElement>('#tooltip')
   const phaseBadge = requireElement<HTMLDivElement>('#growthphase')
+  const dockToggle = requireElement<HTMLButtonElement>('#growthtoggle')
+  const dock = requireElement<HTMLDivElement>('#growthdock')
   const playButton = requireElement<HTMLButtonElement>('#growthplay')
   const resetButton = requireElement<HTMLButtonElement>('#growthreset')
   const rerollButton = requireElement<HTMLButtonElement>('#growthreroll')
@@ -440,6 +447,16 @@ export function startGrowthPrototype() {
       syncUi()
     }),
   }
+
+  let dockOpen = false
+  const setDockOpen = (next: boolean) => {
+    dockOpen = next
+    dock.hidden = !next
+    dockToggle.textContent = next ? 'Hide' : 'Menu'
+    dockToggle.setAttribute('aria-expanded', String(next))
+    dockToggle.dataset.active = next ? 'on' : 'off'
+  }
+  setDockOpen(false)
 
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#05060a')
@@ -869,11 +886,18 @@ export function startGrowthPrototype() {
       ev.preventDefault()
       setPlaying(!playing)
     }
+    if (ev.key.toLowerCase() === 'm') {
+      setDockOpen(!dockOpen)
+    }
     if (ev.key.toLowerCase() === 'r') {
       genome.seed = Math.floor(Math.random() * 1_000_000_000) + 1
       rebuildStructures()
       applyGenomeToMesh()
     }
+  })
+
+  dockToggle.addEventListener('click', () => {
+    setDockOpen(!dockOpen)
   })
 
   function onResize() {
