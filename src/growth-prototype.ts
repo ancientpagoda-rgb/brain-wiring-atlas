@@ -48,6 +48,7 @@ type RegionVisual = {
   spec: RegionSpec
   mesh: THREE.Mesh
   basePosition: THREE.Vector3
+  shapeScale: THREE.Vector3
 }
 
 type TractVisual = {
@@ -61,6 +62,23 @@ type PhaseInfo = {
   name: string
   summary: string
 }
+
+type ShellField = {
+  center: THREE.Vector3
+  weight: number
+  spread: number
+  born: number
+}
+
+const SHELL_FIELDS: ShellField[] = [
+  { center: new THREE.Vector3(0, 0.86, 0.14), weight: 0.18, spread: 0.78, born: 0.08 },
+  { center: new THREE.Vector3(0, -0.86, 0.08), weight: 0.16, spread: 0.76, born: 0.12 },
+  { center: new THREE.Vector3(0, 0.1, 0.92), weight: 0.24, spread: 0.72, born: 0.18 },
+  { center: new THREE.Vector3(-0.72, 0.0, -0.18), weight: 0.15, spread: 0.58, born: 0.2 },
+  { center: new THREE.Vector3(0.72, 0.0, -0.18), weight: 0.15, spread: 0.58, born: 0.2 },
+  { center: new THREE.Vector3(0.0, -0.42, -0.6), weight: 0.2, spread: 0.5, born: 0.28 },
+  { center: new THREE.Vector3(0.0, -0.18, -0.92), weight: 0.12, spread: 0.42, born: 0.34 },
+]
 
 const REGION_SPECS: RegionSpec[] = [
   { id: 'brainstem', label: 'Brainstem', color: 0xffb86b, base: [0, -0.34, -0.48], radius: 0.085, born: 0.04 },
@@ -198,6 +216,28 @@ const PRESETS: Record<string, Partial<Genome> & { name: string }> = {
   },
 }
 
+function regionShapeScale(id: RegionId) {
+  switch (id) {
+    case 'brainstem':
+      return new THREE.Vector3(0.72, 0.66, 1.46)
+    case 'thalamus':
+      return new THREE.Vector3(0.82, 0.8, 0.9)
+    case 'occipital':
+      return new THREE.Vector3(1.02, 0.82, 1.18)
+    case 'parietal':
+      return new THREE.Vector3(0.98, 0.78, 1.26)
+    case 'frontal_l':
+    case 'frontal_r':
+      return new THREE.Vector3(1.3, 0.88, 0.82)
+    case 'temporal_l':
+    case 'temporal_r':
+      return new THREE.Vector3(1.22, 0.8, 0.84)
+    case 'hippocampus_l':
+    case 'hippocampus_r':
+      return new THREE.Vector3(0.9, 0.68, 0.62)
+  }
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
@@ -313,6 +353,26 @@ function pointAtQuadratic(start: THREE.Vector3, control: THREE.Vector3, end: THR
 
 function phaseColor(start: THREE.Color, end: THREE.Color, t: number) {
   return start.clone().lerp(end, clamp(t, 0, 1))
+}
+
+function deformSphericalGeometry(
+  geometry: THREE.BufferGeometry,
+  transform: (direction: THREE.Vector3, index: number) => number
+) {
+  const positions = geometry.attributes.position as THREE.BufferAttribute
+  const source = new Float32Array(positions.array as Float32Array)
+  const direction = new THREE.Vector3()
+
+  for (let i = 0, vertex = 0; i < source.length; i += 3, vertex += 1) {
+    direction.set(source[i], source[i + 1], source[i + 2]).normalize()
+    const radius = transform(direction, vertex)
+    positions.array[i] = direction.x * radius
+    positions.array[i + 1] = direction.y * radius
+    positions.array[i + 2] = direction.z * radius
+  }
+
+  positions.needsUpdate = true
+  geometry.computeVertexNormals()
 }
 
 function disposeGroupContents(group: THREE.Group) {
@@ -502,8 +562,8 @@ export function startGrowthPrototype() {
   const tractGroup = new THREE.Group()
   growthRoot.add(tractGroup)
 
-  const shellGeometry = new THREE.SphereGeometry(1, 58, 38)
-  shellGeometry.scale(1.08, 0.94, 0.88)
+  const shellGeometry = new THREE.SphereGeometry(1, 72, 48)
+  shellGeometry.scale(1.12, 0.95, 0.9)
   const shellPositions = shellGeometry.attributes.position as THREE.BufferAttribute
   const shellBase = new Float32Array(shellPositions.array.length)
   shellBase.set(shellPositions.array as Float32Array)
@@ -519,18 +579,18 @@ export function startGrowthPrototype() {
   const shellMesh = new THREE.Mesh(shellGeometry, shellMaterial)
   shellGroup.add(shellMesh)
 
-  const coreMesh = new THREE.Mesh(
+  const whiteMatterMesh = new THREE.Mesh(
     shellGeometry,
     new THREE.MeshBasicMaterial({
-      color: 0x0d1422,
+      color: 0xdfe8f6,
       transparent: true,
-      opacity: 0.26,
+      opacity: 0.14,
       depthWrite: false,
       blending: THREE.NormalBlending,
     })
   )
-  coreMesh.scale.setScalar(0.87)
-  shellGroup.add(coreMesh)
+  whiteMatterMesh.scale.setScalar(0.84)
+  shellGroup.add(whiteMatterMesh)
 
   const glowMesh = new THREE.Mesh(
     new THREE.SphereGeometry(0.92, 26, 18),
@@ -543,6 +603,53 @@ export function startGrowthPrototype() {
     })
   )
   shellGroup.add(glowMesh)
+
+  const anatomyGroup = new THREE.Group()
+  anatomyGroup.position.set(0, -0.02, -0.04)
+  shellGroup.add(anatomyGroup)
+
+  const cerebellumGeometry = new THREE.IcosahedronGeometry(0.38, 3)
+  deformSphericalGeometry(cerebellumGeometry, (direction, index) => {
+    const ridgeA = Math.sin(direction.x * 16.5 + direction.y * 13.2 + genome.seed * 0.00011 + index * 0.08)
+    const ridgeB = Math.sin(direction.y * 22.1 - direction.z * 17.4 + genome.seed * 0.00007)
+    const ridgeC = waveNoise(direction.x * 2.4, direction.y * 2.1, direction.z * 2.2, 0.42, genome.seed)
+    return 0.38 * (1 + ridgeA * 0.05 + ridgeB * 0.04 + ridgeC * 0.05)
+  })
+  const cerebellumMesh = new THREE.Mesh(
+    cerebellumGeometry,
+    new THREE.MeshStandardMaterial({
+      color: 0x7084d7,
+      roughness: 0.62,
+      metalness: 0.03,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      emissive: new THREE.Color(0x4f63b5),
+      emissiveIntensity: 0.06,
+    })
+  )
+  cerebellumMesh.position.set(0.02, -0.5, -0.58)
+  cerebellumMesh.scale.set(1.02, 0.84, 0.9)
+  cerebellumMesh.rotation.set(0.08, 0.12, -0.22)
+  anatomyGroup.add(cerebellumMesh)
+
+  const brainstemMesh = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.1, 0.42, 10, 16),
+    new THREE.MeshStandardMaterial({
+      color: 0xc78a5a,
+      roughness: 0.82,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      emissive: new THREE.Color(0x8e5e3f),
+      emissiveIntensity: 0.05,
+    })
+  )
+  brainstemMesh.position.set(0.03, -0.36, -0.78)
+  brainstemMesh.rotation.set(Math.PI / 2, -0.08, 0.2)
+  brainstemMesh.scale.set(0.95, 0.92, 1.08)
+  anatomyGroup.add(brainstemMesh)
 
   const vertexMeta = Array.from({ length: shellBase.length / 3 }, (_, index) => {
     const rng = createRng(hashSeed(genome.seed + index * 13))
@@ -605,14 +712,23 @@ export function startGrowthPrototype() {
     const hue = phaseColor(colorStart, colorEnd, smoothstep(0.12, 0.92, ageValue))
     shellMaterial.color.copy(hue)
     shellMaterial.opacity = lerp(0.92, 0.78, growth)
-    shellMaterial.roughness = lerp(0.9, 0.68, folding)
-    coreMesh.material.opacity = lerp(0.22, 0.06, growth)
-    glowMesh.material.opacity = 0.04 + folding * 0.07
+    shellMaterial.roughness = lerp(0.92, 0.6, folding)
+    whiteMatterMesh.material.opacity = lerp(0.1, 0.18, growth)
+    glowMesh.material.opacity = 0.03 + folding * 0.08
+    const subcorticalGrowth = smoothstep(0.06, 0.5, ageValue)
+    brainstemMesh.scale.setScalar((0.42 + subcorticalGrowth * 0.64) * (0.84 + genome.size * 0.14))
+    brainstemMesh.material.opacity = lerp(0.04, 0.88, subcorticalGrowth)
+    brainstemMesh.material.emissiveIntensity = 0.04 + subcorticalGrowth * 0.08
+    brainstemMesh.rotation.z = 0.2 + Math.sin(ageValue * 2.1 + genome.seed * 0.001) * 0.05
+    cerebellumMesh.scale.setScalar((0.36 + subcorticalGrowth * 0.72) * (0.86 + genome.size * 0.12))
+    cerebellumMesh.material.opacity = lerp(0.03, 0.82, subcorticalGrowth)
+    cerebellumMesh.material.emissiveIntensity = 0.05 + subcorticalGrowth * 0.1
+    cerebellumMesh.rotation.y = 0.12 + genome.noise * 0.08
 
     const seed = genome.seed
     const sizeBoost = 0.06 + genome.size * 0.11
-    const foldBoost = 0.04 + genome.foldPressure * 0.12
-    const noiseBoost = genome.noise * 0.07
+    const foldBoost = 0.05 + genome.foldPressure * 0.15
+    const noiseBoost = genome.noise * 0.08
     const asymmetry = 1 - genome.symmetry
 
     for (let i = 0; i < array.length; i += 3) {
@@ -630,10 +746,17 @@ export function startGrowthPrototype() {
       const temporalR = influence(dir, new THREE.Vector3(0.72, 0, -0.18), 0.5)
       const hemisphere = dir.x >= 0 ? 1 : -1
 
+      const fieldBulge = SHELL_FIELDS.reduce((acc, field) => {
+        const emergence = smoothstep(field.born, field.born + 0.22, ageValue)
+        return acc + field.weight * emergence * influence(dir, field.center, field.spread)
+      }, 0)
+
       const wave = waveNoise(dir.x * 1.8 + meta.phase, dir.y * 1.8, dir.z * 1.8, ageValue * 4.3, seed)
-      const ridge = Math.sin(dir.y * 8.8 * meta.warp + ageValue * 7.2 + meta.phase)
-      const groove = Math.sin(dir.x * 7.1 + dir.z * 9.4 + ageValue * 5.3 + meta.phase * 0.7)
-      const foldWave = (ridge + groove + wave) / 3
+      const ridge = Math.sin(dir.y * (8.8 + genome.foldPressure * 3.1) * meta.warp + ageValue * 7.2 + meta.phase)
+      const groove = Math.sin(dir.x * 7.1 + dir.z * (9.4 + genome.foldPressure * 2.2) + ageValue * 5.3 + meta.phase * 0.7)
+      const diagonal = Math.sin((dir.x * 4.8 - dir.y * 2.6 + dir.z * 5.1) * meta.lift + ageValue * 4.6 + meta.bias * 2.1)
+      const foldWave = (ridge + groove + diagonal + wave * 0.9) / 4
+      const hemisphericGroove = (1 - smoothstep(0.05, 0.38, Math.abs(dir.x))) * (0.07 + asymmetry * 0.08) * (0.38 + 0.62 * growth)
 
       const lobeBulge =
         anterior * 0.8 +
@@ -641,14 +764,16 @@ export function startGrowthPrototype() {
         dorsal * 0.9 +
         temporalL * 0.66 +
         temporalR * 0.66 +
-        ventral * 0.28
+        ventral * 0.24 +
+        fieldBulge * 0.42
 
       const leftRight =
-        hemisphere * asymmetry * (0.04 + 0.03 * Math.sin(ageValue * 6.2 + meta.bias * 4.1))
+        hemisphere * asymmetry * (0.032 + 0.026 * Math.sin(ageValue * 6.2 + meta.bias * 4.1))
 
-      const corticalFold = foldBoost * folding * meta.lift * (0.35 + 0.65 * genome.foldPressure + foldWave * 0.08)
-      const irregularity = noiseBoost * wave * (0.55 + genome.noise * 0.45)
-      const expansion = sizeBoost + lobeBulge * (0.16 + strain * 0.1) + corticalFold + irregularity + leftRight
+      const corticalFold =
+        foldBoost * folding * meta.lift * (0.34 + 0.66 * genome.foldPressure) * (0.56 + 0.44 * foldWave)
+      const irregularity = noiseBoost * wave * (0.56 + genome.noise * 0.42)
+      const expansion = sizeBoost + lobeBulge * (0.18 + strain * 0.1) + corticalFold + irregularity + leftRight - hemisphericGroove
 
       array[i] = dir.x * (1 + expansion)
       array[i + 1] = dir.y * (1 + expansion * 0.94)
@@ -664,7 +789,11 @@ export function startGrowthPrototype() {
       const emergence = smoothstep(visual.spec.born, visual.spec.born + 0.2, ageValue)
       const stabilizing = smoothstep(visual.spec.born + 0.08, visual.spec.born + 0.42, ageValue)
       const scale = visual.spec.radius * emergence * (0.4 + genome.size * 0.7)
-      visual.mesh.scale.setScalar(scale)
+      visual.mesh.scale.set(
+        visual.shapeScale.x * scale,
+        visual.shapeScale.y * scale,
+        visual.shapeScale.z * scale
+      )
       const material = visual.mesh.material as THREE.MeshStandardMaterial
       material.opacity = clamp(0.02 + emergence * (0.78 - genome.pruning * 0.2), 0, 0.95)
       material.emissiveIntensity = 0.06 + stabilizing * 0.24
@@ -749,10 +878,11 @@ export function startGrowthPrototype() {
       if (spec.id.endsWith('_r')) jitter.x += symmetrySkew * 0.05
       const position = base.add(jitter)
       mesh.position.copy(position)
+      mesh.rotation.set((rng() - 0.5) * 0.35, (rng() - 0.5) * 0.45, (rng() - 0.5) * 0.3)
       mesh.userData = { label: spec.label }
       regionGroup.add(mesh)
       interactiveObjects.push(mesh)
-      const visual = { spec, mesh, basePosition: position.clone() }
+      const visual = { spec, mesh, basePosition: position.clone(), shapeScale: regionShapeScale(spec.id) }
       regionVisuals.push(visual)
       regionById.set(spec.id, visual)
     }
